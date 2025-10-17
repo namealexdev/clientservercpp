@@ -8,22 +8,19 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-using namespace std;
 
 // Class that represents a simple thread pool
 class ThreadPool {
 public:
-    // // Constructor to creates a thread pool with given
-    // number of threads
     ThreadPool(size_t num_threads
-               = thread::hardware_concurrency())
+               = std::thread::hardware_concurrency())
     {
 
         // Creating worker threads
         for (size_t i = 0; i < num_threads; ++i) {
             threads_.emplace_back([this] {
                 while (true) {
-                    function<void()> task;
+                    std::function<void()> task;
                     // The reason for putting the below code
                     // here is to unlock the queue before
                     // executing the task so that other
@@ -31,7 +28,7 @@ public:
                     {
                         // Locking the queue so that data
                         // can be shared safely
-                        unique_lock<mutex> lock(
+                        std::unique_lock<std::mutex> lock(
                             queue_mutex_);
 
                         // Waiting until there is a task to
@@ -47,7 +44,7 @@ public:
                         }
 
                         // Get the next task from the queue
-                        task = move(tasks_.front());
+                        task = std::move(tasks_.front());
                         tasks_.pop();
                     }
 
@@ -62,7 +59,7 @@ public:
     {
         {
             // Lock the queue to update the stop flag safely
-            unique_lock<mutex> lock(queue_mutex_);
+            std::unique_lock<std::mutex> lock(queue_mutex_);
             stop_ = true;
         }
 
@@ -77,28 +74,28 @@ public:
     }
 
     // Enqueue task for execution by the thread pool
-    void enqueue(function<void()> task)
+    void enqueue(std::function<void()> task)
     {
         {
-            unique_lock<std::mutex> lock(queue_mutex_);
-            tasks_.emplace(move(task));
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            tasks_.emplace(std::move(task));
         }
         cv_.notify_one();
     }
 
 private:
     // Vector to store worker threads
-    vector<thread> threads_;
+    std::vector<std::thread> threads_;
 
     // Queue of tasks
-    queue<function<void()> > tasks_;
+    std::queue<std::function<void()> > tasks_;
 
     // Mutex to synchronize access to shared data
-    mutex queue_mutex_;
+    std::mutex queue_mutex_;
 
     // Condition variable to signal changes in the state of
     // the tasks queue
-    condition_variable cv_;
+    std::condition_variable cv_;
 
     // Flag to indicate whether the thread pool should stop
     // or not
