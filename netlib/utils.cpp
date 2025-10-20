@@ -28,7 +28,7 @@ std::vector<uint8_t> generateRandomData(size_t size)
     return data;
 }
 
-string generateUuid() {
+std::array<uint8_t, 16> generateUuid() {
     static std::random_device rd;
     static std::mt19937_64 gen;
     static std::uniform_int_distribution<uint64_t> dis;
@@ -46,17 +46,16 @@ string generateUuid() {
     uuid[8] = (uuid[8] & 0x3F) | 0x80; // variant
 
     // toString XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-
-    for (size_t i = 0; i < 16; ++i) {
-        ss << std::setw(2) << static_cast<unsigned>(uuid[i]);
-        if (i == 3 || i == 5 || i == 7 || i == 9) {
-            ss << "-";
-        }
-    }
-
-    return ss.str();
+    // std::stringstream ss;
+    // ss << std::hex << std::setfill('0');
+    // for (size_t i = 0; i < 16; ++i) {
+    //     ss << std::setw(2) << static_cast<unsigned>(uuid[i]);
+    //     if (i == 3 || i == 5 || i == 7 || i == 9) {
+    //         ss << "-";
+    //     }
+    // }
+    // return ss.str();
+    return uuid;
 }
 
 void write2file(string& sfilename, const char* data, ssize_t size) {
@@ -94,16 +93,16 @@ void write2file(string& sfilename, const char* data, ssize_t size) {
 }
 
 
-bool write_session_uuid(const std::string& client_session_uuid, const std::string& filename) {
+bool write_session_uuid(const std::array<uint8_t, 16>& client_session_uuid, const string& filename) {
     std::ofstream file(filename, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
         return false;
     }
-    file.write(client_session_uuid.c_str(), client_session_uuid.size());
+    file.write(client_session_uuid.data(), client_session_uuid.size());
     return file.good();
 }
 
-bool read_session_uuid(const std::string& filename, std::string& result) {
+bool read_session_uuid(const std::string& filename, std::array<uint8_t, 16>& result) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         return false;
@@ -112,6 +111,5 @@ bool read_session_uuid(const std::string& filename, std::string& result) {
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    result.resize(size);
-    return !!file.read(&result[0], size);
+    return !!file.read(result.data(), size);
 }

@@ -15,6 +15,7 @@ add_library(netlib SHARED
   threadpool.h
   utils.h utils.cpp
   stats.h
+  serialization.h serialization.cpp
 )
 
 target_include_directories(netlib PUBLIC

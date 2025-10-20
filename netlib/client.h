@@ -33,7 +33,7 @@ public:
     bool create_socket_connect();
     string getClientState(ClientState state);
 
-    string uuid_;
+    std::array<uint8_t, 16> uuid_;
     void loadUuid(){
         // save datetime?
         // load and save client session uuid

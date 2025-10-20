@@ -10,7 +10,16 @@ bool IServer::create_socket()
         return false;
     }
 
-    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &conf_.recv_buffer_size, sizeof(conf_.recv_buffer_size));
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &conf_.recv_buffer_size, sizeof(conf_.recv_buffer_size)) == -1) {
+        std::cout << "fail set SO_RCVBUF";
+    };
+
+    timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
+        std::cout << "fail set SO_RCVTIMEO 1s";
+    }
 
     int opt = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
@@ -60,6 +69,19 @@ string IServer::getServerState(ServerState state)
     }
 }
 
+bool peekHeader(int sock, char* data, size_t size) {
+    size_t totalReceived = 0;
+    while (totalReceived < size) {
+        ssize_t received = recv(sock, data + totalReceived, size - totalReceived, MSG_PEEK);
+        if (received <= 0) {
+            return false;
+        }
+        totalReceived += received;
+    }
+    return true;
+}
+
+
 bool SinglethreadServer::start()
 {
     if (!create_socket()){
@@ -74,7 +96,7 @@ bool SinglethreadServer::start()
 
     // print stats
     new std::thread([&](){
-        while(socket_){
+        while(socket_){// just for debug
             std::cout << getServerState(state_) << " recv:" << stats_.getBitrate() << std::endl;
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
@@ -88,10 +110,26 @@ bool SinglethreadServer::start()
             continue;
         }
 
-        std::cout << "Client connected!" << std::endl;
-
-
         std::vector<char> buff(conf_.recv_buffer_size);
+
+        std::cout << "Client connected!" << std::endl;
+        {
+            // recv(); recvrequest with uuid
+
+
+            if (!fullRecvHeader(client_sock, buff.data(), sizeof())){
+
+            }
+            MessageType type;
+            if (!recvExact(client_sock, buff.data(), sizeof(type))) {
+                // Обработка ошибки
+                return;
+            }
+
+
+        }
+
+
         while (true) {
             ssize_t count_read = recv(client_sock, buff.data(), buff.size(), 0);
             if (count_read <= 0) {
