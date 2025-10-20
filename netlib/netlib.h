@@ -31,14 +31,5 @@ class MultithreadFactory : public INetworkFactory{
 };
 
 
-// class Netlib
-// {
-
-// public:
-//     INetworkFactory *factory_;
-// };
-
-
-
 
 #endif // NETLIB_H

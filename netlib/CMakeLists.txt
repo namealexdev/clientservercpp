@@ -8,12 +8,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(netlib SHARED
   netlib.cpp
   netlib.h
-  server.h
-  client.h
+  server.h server.cpp
+  client.h client.cpp
   const.h
   queue.h
   threadpool.h
   utils.h utils.cpp
+  stats.h
 )
 
 target_include_directories(netlib PUBLIC

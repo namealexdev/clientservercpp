@@ -1,6 +1,7 @@
 #include "utils.h"
 #include "const.h"
-
+#include <sstream>
+#include <iomanip>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -11,8 +12,39 @@ int getRandomNumber(int from, int to) {
     return dis(gen);
 }
 
-void write2file(const char* data, ssize_t size) {
-    static const char* filename = "output.txt";
+string generateUuid() {
+    static std::random_device rd;
+    static std::mt19937_64 gen;
+    static std::uniform_int_distribution<uint64_t> dis;
+    std::array<uint8_t, 16> uuid;
+
+    // Генерируем 128 бит случайных данных (16 байт)
+    uint64_t part1 = dis(gen);
+    uint64_t part2 = dis(gen);
+
+    std::memcpy(uuid.data(), &part1, 8);
+    std::memcpy(uuid.data() + 8, &part2, 8);
+
+    // Устанавливаем версию UUID (версия 4 - случайный UUID)
+    uuid[6] = (uuid[6] & 0x0F) | 0x40; // version 4
+    uuid[8] = (uuid[8] & 0x3F) | 0x80; // variant
+
+    // toString XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+
+    for (size_t i = 0; i < 16; ++i) {
+        ss << std::setw(2) << static_cast<unsigned>(uuid[i]);
+        if (i == 3 || i == 5 || i == 7 || i == 9) {
+            ss << "-";
+        }
+    }
+
+    return ss.str();
+}
+
+void write2file(string& sfilename, const char* data, ssize_t size) {
+    static const char* filename = sfilename.c_str();
     static const off_t MAX_SIZE = 1ULL * 1024 * 1024 * 1024; // 1 GiB
     static int fd = -1;
 
