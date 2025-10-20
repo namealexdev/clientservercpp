@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 13.0.0, 2025-10-20T14:53:55. -->
+<!-- Written by QtCreator 13.0.0, 2025-10-20T17:09:23. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -233,7 +233,8 @@
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">clientapp</value>
     <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">CMakeProjectManager.CMakeRunConfiguration.clientapp</value>
     <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">clientapp</value>
-    <value type="bool" key="ProjectExplorer.RunConfiguration.Customized">false</value>
+    <value type="bool" key="ProjectExplorer.RunConfiguration.Customized">true</value>
+    <value type="QString" key="RunConfiguration.Arguments">&quot;10.210.26.29&quot; 12345</value>
     <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
     <value type="bool" key="RunConfiguration.UseLibrarySearchPath">true</value>
     <value type="bool" key="RunConfiguration.UseQmlDebuggerAuto">true</value>

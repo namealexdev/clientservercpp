@@ -10,6 +10,8 @@ bool IClient::create_socket_connect()
         return false;
     }
 
+    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &conf_.send_buffer_size, sizeof(conf_.send_buffer_size));
+
     if (!conf_.host.empty()){
         struct sockaddr_in bind_addr;
         bind_addr.sin_family = AF_INET;
@@ -57,11 +59,11 @@ bool IClient::create_socket_connect()
     return true;
 }
 
-// bool IClient::auth()
-// {
+bool IClient::auth()
+{
 
-//     return false;
-// }
+    return false;
+}
 
 string IClient::getClientState(ClientState state)
 {
@@ -82,31 +84,44 @@ void SinglethreadClient::start()
     }
 
     new std::thread([&](){
-        while(socket_){
+
+        // int error = 0;
+        // socklen_t len = sizeof(error);
+        // if (getsockopt(socket_, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+        //     return false;
+        // }
+        // error == 0;
+
+        while(socket_ > 0){
             std::cout << getClientState(state_) << " send:" << stats_.getBitrate() << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     });
 
+    // int count = getRandomNumber(1, 10);
+    // std::string message = "random message " + std::to_string(0) + " ";
+    auto message = generateRandomData(1 * 1024 * 1024);//1mb
+
     while (true) {
-        std::string message;
+
+        // message = "";
 
         int count_send = 0;
-        for(int i = 0; i < getRandomNumber(1, 10); i++) {
-
-            message = "random message " + std::to_string(i) + " ";
-            count_send = send(socket_, message.c_str(), message.length(), 0);
+        // for(int i = 0; i < count; i++) {
+            // message = "random message " + std::to_string(i) + " ";
+            count_send = send(socket_, message.data(), message.size(), 0);
             if (count_send <= 0) {
                 last_error_ = "failed to send";
+                std::cerr << last_error_ << std::endl;
                 break;
             }
             stats_.addBytes(count_send);
-        }
+        // }
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        // std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-
-    close(socket_);
+    close(socket_); socket_ = -1;
     state_ = ClientState::DISCONNECTED;
 }
 

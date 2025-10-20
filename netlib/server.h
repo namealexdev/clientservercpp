@@ -9,7 +9,7 @@ struct ServerConfig{
     int port = 12345;
     string filename;// empty = without write
 
-    int recv_buffer_size = 1024;
+    int recv_buffer_size = 1 * 1024 * 1024; // 100 MiB
     int max_connections = 10;
 };
 

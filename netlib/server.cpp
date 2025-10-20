@@ -10,6 +10,8 @@ bool IServer::create_socket()
         return false;
     }
 
+    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &conf_.recv_buffer_size, sizeof(conf_.recv_buffer_size));
+
     int opt = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
         last_error_ = "setsockopt reuseaddr failed";
@@ -74,7 +76,7 @@ bool SinglethreadServer::start()
     new std::thread([&](){
         while(socket_){
             std::cout << getServerState(state_) << " recv:" << stats_.getBitrate() << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     });
 
@@ -89,9 +91,9 @@ bool SinglethreadServer::start()
         std::cout << "Client connected!" << std::endl;
 
 
-        char *buffer = new char[conf_.recv_buffer_size];
+        std::vector<char> buff(conf_.recv_buffer_size);
         while (true) {
-            ssize_t count_read = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+            ssize_t count_read = recv(client_sock, buff.data(), buff.size(), 0);
             if (count_read <= 0) {
                 if (count_read == 0) {
                     std::cout << "Client disconnected." << std::endl;
@@ -101,16 +103,12 @@ bool SinglethreadServer::start()
                 break;
             }
             stats_.addBytes(count_read);
-            buffer[count_read] = '\0';
+            // buff[count_read] = '\0';
             // std::cout << "Received: " << valread << " bytes\n";
-
-            // answer
-            // std::string response = "Echo: " + std::string(buffer);
-            // send(client_sock, response.c_str(), response.length(), 0);
 
             // write to file
             if (!conf_.filename.empty()){
-                write2file(conf_.filename, buffer, count_read);
+                write2file(conf_.filename, buff.data(), count_read);
             }
         }
 

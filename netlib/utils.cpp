@@ -5,11 +5,27 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <fstream>
+#include <filesystem>
+
 
 int getRandomNumber(int from, int to) {
     static std::mt19937 gen(std::random_device{}());
     static std::uniform_int_distribution<int> dis(from, to);
     return dis(gen);
+}
+
+std::vector<uint8_t> generateRandomData(size_t size)
+{
+    std::vector<uint8_t> data(size);
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint8_t> dis(0, 255);
+
+    for (size_t i = 0; i < size; ++i) {
+        data[i] = dis(gen);
+    }
+    return data;
 }
 
 string generateUuid() {
@@ -49,7 +65,7 @@ void write2file(string& sfilename, const char* data, ssize_t size) {
     static int fd = -1;
 
     if (fd == -1) {
-        fd = open(filename, O_WRONLY | O_CREAT | O_APPEND | O_SYNC, 0644);
+        fd = open(filename, O_WRONLY | O_CREAT | O_APPEND , 0644);//O_SYNC
         if (fd == -1) return;
     }
 
@@ -75,4 +91,27 @@ void write2file(string& sfilename, const char* data, ssize_t size) {
     }
 
     fsync(fd);//flush
+}
+
+
+bool write_session_uuid(const std::string& client_session_uuid, const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        return false;
+    }
+    file.write(client_session_uuid.c_str(), client_session_uuid.size());
+    return file.good();
+}
+
+bool read_session_uuid(const std::string& filename, std::string& result) {
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    result.resize(size);
+    return !!file.read(&result[0], size);
 }

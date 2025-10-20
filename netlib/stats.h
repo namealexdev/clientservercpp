@@ -14,7 +14,7 @@ public:
         total_bytes.fetch_add(bytes, std::memory_order_relaxed);
     }
 
-    //  скорость за интервал с последнего вызова этой функции
+    //  скорость за интервал с последнего вызова
     string getBitrate() {
         auto now = std::chrono::steady_clock::now();
         uint64_t current_bytes = total_bytes.load(std::memory_order_relaxed);
@@ -36,7 +36,8 @@ public:
         last_bytes = current_bytes;
 
         double bps = (delta * 8.0) / elapsed; // bits per second
-        return formatBitrate(bps);
+        double btps = (delta) / elapsed; // bytes per second
+        return formatBitrate(btps) + " " + formatBitrate(bps, false);
     }
 
 private:
@@ -45,14 +46,23 @@ private:
     uint64_t last_bytes = 0;
     std::chrono::steady_clock::time_point last_time{};
 
-    std::string formatBitrate(double bps) {
+    std::string formatBitrate(double bps, bool bytes = true) // false = bits
+    {
         if (bps < 0) return "invalid";
 
-        const char* units[] = {"bps", "Kbps", "Mbps", "Gbps", "Tbps"};
+        const char* byte_units[] = {"bytes", "Kbytes", "Mbytes", "Gbytes", "Tbytes"};
+        const char* bitrate_units[] = {"bits/s", "Kbits/s", "Mbits/s", "Gbits/s", "Tbits/s"};
+        const char** units;
+        if (bytes){
+            units = byte_units;
+        }else{
+            units = bitrate_units;
+        }
+
         size_t unit_index = 0;
         double value = bps;
 
-        while (value >= 1000.0 && unit_index < sizeof(units) / sizeof(units[0]) - 1) {
+        while (value >= 1000.0 && unit_index < sizeof(byte_units) / sizeof(byte_units[0]) - 1) {
             value /= 1000.0;
             ++unit_index;
         }
