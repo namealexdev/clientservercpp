@@ -1,4 +1,5 @@
 #include "server.h"
+#include "serialization.h"
 
 bool IServer::create_socket()
 {
@@ -57,9 +58,9 @@ bool IServer::create_socket()
     return true;
 }
 
-string IServer::getServerState(ServerState state)
+string IServer::getServerState()
 {
-    switch (state) {
+    switch (state_) {
     case ServerState::STARTING: return "STARTING";
     case ServerState::RUNNING: return "RUNNING";
     case ServerState::STOPPING: return "STOPPING";
@@ -69,19 +70,6 @@ string IServer::getServerState(ServerState state)
     }
 }
 
-bool peekHeader(int sock, char* data, size_t size) {
-    size_t totalReceived = 0;
-    while (totalReceived < size) {
-        ssize_t received = recv(sock, data + totalReceived, size - totalReceived, MSG_PEEK);
-        if (received <= 0) {
-            return false;
-        }
-        totalReceived += received;
-    }
-    return true;
-}
-
-
 bool SinglethreadServer::start()
 {
     if (!create_socket()){
@@ -90,17 +78,11 @@ bool SinglethreadServer::start()
 
     state_ = ServerState::RUNNING;
 
+    MessageParser parser(socket_, conf_.recv_buffer_size);
+    ParsedMessage msg{};
     int client_sock;
     sockaddr_in address;
     int addrlen = sizeof(address);
-
-    // print stats
-    new std::thread([&](){
-        while(socket_){// just for debug
-            std::cout << getServerState(state_) << " recv:" << stats_.getBitrate() << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-    });
 
     while (true) {
         std::cout << "Waiting for a client..." << std::endl;
@@ -109,46 +91,56 @@ bool SinglethreadServer::start()
             last_error_ = "accept failed";
             continue;
         }
-
-        std::vector<char> buff(conf_.recv_buffer_size);
-
         std::cout << "Client connected!" << std::endl;
-        {
-            // recv(); recvrequest with uuid
 
-
-            if (!fullRecvHeader(client_sock, buff.data(), sizeof())){
-
-            }
-            MessageType type;
-            if (!recvExact(client_sock, buff.data(), sizeof(type))) {
-                // Обработка ошибки
-                return;
-            }
-
-
+        // connection handler - auth
+        if (parser.readMessage(msg, false) && msg.type == MessageType::AUTH_REQUEST){
+            //send AUTH_RESPONSE
+            // fill msg need data
+            auto uuid = msg.auth_response.client_uuid;
+            parser.sendAuthResponce(msg, uuid, 0);// TODO:
+        }else{
+            close(client_sock);
+            std::cout << "Not our client!" << std::endl;
+            continue;
         }
 
-
+        // data handle
         while (true) {
-            ssize_t count_read = recv(client_sock, buff.data(), buff.size(), 0);
-            if (count_read <= 0) {
-                if (count_read == 0) {
-                    std::cout << "Client disconnected." << std::endl;
-                } else {
-                    std::cout << "Receive error: " << strerror(errno) << std::endl;
-                }
-                break;
+            if (parser.readMessage(msg) == false || msg.type != MessageType::DATA_PKT){
+                continue;//?
             }
-            stats_.addBytes(count_read);
-            // buff[count_read] = '\0';
-            // std::cout << "Received: " << valread << " bytes\n";
+            stats_.addBytes(msg.size_header);
+
+            // (записываем в очередь) или (отправляем куда надо)
 
             // write to file
             if (!conf_.filename.empty()){
                 write2file(conf_.filename, buff.data(), count_read);
             }
         }
+
+
+        // std::vector<char> buff(conf_.recv_buffer_size);
+        // while (true) {
+        //     ssize_t count_read = recv(client_sock, buff.data(), buff.size(), 0);
+        //     if (count_read <= 0) {
+        //         if (count_read == 0) {
+        //             std::cout << "Client disconnected." << std::endl;
+        //         } else {
+        //             std::cout << "Receive error: " << strerror(errno) << std::endl;
+        //         }
+        //         break;
+        //     }
+        //     stats_.addBytes(count_read);
+        //     // buff[count_read] = '\0';
+        //     // std::cout << "Received: " << valread << " bytes\n";
+
+        //     // write to file
+        //     if (!conf_.filename.empty()){
+        //         write2file(conf_.filename, buff.data(), count_read);
+        //     }
+        // }
 
         close(client_sock);
         std::cout << "Closed connection. Waiting for new client..." << std::endl;;

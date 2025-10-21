@@ -35,5 +35,11 @@ int main(int argc, char* argv[])
     IServer *srv = factory->createServer(conf);
     srv->start();
 
+    // show stats
+    while(srv->socket_){// just for debug
+        std::cout << srv->getServerState() << " recv:" << srv->stats_.getBitrate() << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
     return 0;
 }

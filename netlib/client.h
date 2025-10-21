@@ -9,7 +9,8 @@ struct ClientConfig{
     string server_ip = "127.0.0.1";
     int server_port = 12345;
 
-    int send_buffer_size = 1 * 1024 * 1024; // 100 MiB
+    int send_buffer_size = 1 * 1024 * 1024; // 1 MiB
+    int recv_buffer_size = 1 * 1024 * 1024; // 1 MiB
 };
 
 enum class ClientState : uint8_t{
@@ -31,14 +32,14 @@ public:
     ClientState state_ = ClientState::DISCONNECTED;
 
     bool create_socket_connect();
-    string getClientState(ClientState state);
+    string getClientState();
 
     std::array<uint8_t, 16> uuid_;
     void loadUuid(){
         // save datetime?
         // load and save client session uuid
-        read_session_uuid("client_session_uuid", uuid_);
-        if (uuid_.empty()){
+
+        if (!read_session_uuid("client_session_uuid", uuid_)){
             uuid_ = generateUuid();
             write_session_uuid(uuid_, "client_session_uuid");
         }

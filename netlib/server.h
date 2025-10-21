@@ -32,7 +32,7 @@ public:
     ServerState state_ = ServerState::STOPPED;
 
     bool create_socket();
-    string getServerState(ServerState state);
+    string getServerState();
 
     Stats stats_;
 };

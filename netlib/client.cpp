@@ -1,4 +1,5 @@
 #include "client.h"
+#include "serialization.h"
 
 bool IClient::create_socket_connect()
 {
@@ -65,9 +66,9 @@ bool IClient::auth()
     return false;
 }
 
-string IClient::getClientState(ClientState state)
+string IClient::getClientState()
 {
-    switch (state) {
+    switch (state_) {
     case ClientState::DISCONNECTED: return "DISCONNECTED";
     case ClientState::CONNECTING: return "CONNECTING";
     case ClientState::AUTHENTICATING: return "AUTHENTICATING";
@@ -83,20 +84,32 @@ void SinglethreadClient::start()
         return ;
     }
 
-    new std::thread([&](){
+    // send AUTH_REQUEST
+    MessageParser parser(socket_, conf_.recv_buffer_size);
+    ParsedMessage msg{};
+    parser.sendAuthRequest(msg, uuid_);
 
-        // int error = 0;
-        // socklen_t len = sizeof(error);
-        // if (getsockopt(socket_, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
-        //     return false;
-        // }
-        // error == 0;
+    // wait AUTH_RESPONSE
+    if (parser.readMessage(msg, false) && msg.type == MessageType::AUTH_RESPONSE){
+        auto restore_seq = msg.auth_response.restore_seq_num;// TODO
+        std::cout << "restore: " << restore_seq << std::endl;
+    }else{
+        close(socket_); socket_ = -1;
+        state_ = ClientState::DISCONNECTED;
+        std::cout << "Not our server!" << std::endl;
+        return;
+    }
 
-        while(socket_ > 0){
-            std::cout << getClientState(state_) << " send:" << stats_.getBitrate() << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-    });
+    // send DATA_PKT
+
+    // new std::thread([&](){
+    //     // int error = 0;
+    //     // socklen_t len = sizeof(error);
+    //     // if (getsockopt(socket_, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+    //     //     return false;
+    //     // }
+    //     // error == 0;
+    // });
 
     // int count = getRandomNumber(1, 10);
     // std::string message = "random message " + std::to_string(0) + " ";

@@ -38,5 +38,10 @@ int main(int argc, char* argv[])
     IClient* cli = factory->createClient(conf);
     cli->start();
 
+    while(cli->socket_ > 0){
+        std::cout << cli->getClientState() << " send:" << cli->stats_.getBitrate() << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
     return 0;
 }
