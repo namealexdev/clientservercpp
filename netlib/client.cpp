@@ -94,7 +94,7 @@ void SinglethreadClient::start()
         auto restore_seq = msg.auth_response.restore_seq_num;// TODO
         std::cout << "restore: " << restore_seq << std::endl;
     }else{
-        close(socket_); socket_ = -1;
+        // close(socket_); socket_ = -1;
         state_ = ClientState::DISCONNECTED;
         std::cout << "Not our server!" << std::endl;
         return;
@@ -114,7 +114,7 @@ void SinglethreadClient::start()
     // int count = getRandomNumber(1, 10);
     // std::string message = "random message " + std::to_string(0) + " ";
     auto message = generateRandomData(1 * 1024 * 1024);//1mb
-
+    uint64_t seq_num = 0;
     while (true) {
 
         // message = "";
@@ -122,12 +122,16 @@ void SinglethreadClient::start()
         int count_send = 0;
         // for(int i = 0; i < count; i++) {
             // message = "random message " + std::to_string(i) + " ";
-            count_send = send(socket_, message.data(), message.size(), 0);
+            parser.sendDataPkt(msg, seq_num, (char*)message.data(), message.size());
+
+            count_send = msg.packet_header.data_size;
+            // count_send = send(socket_, message.data(), message.size(), 0);
             if (count_send <= 0) {
                 last_error_ = "failed to send";
                 std::cerr << last_error_ << std::endl;
                 break;
             }
+            seq_num++;
             stats_.addBytes(count_send);
         // }
 

@@ -9,8 +9,8 @@
 
 enum class MessageType : uint8_t {
     AUTH_REQUEST = 1,
-    AUTH_RESPONSE,
-    DATA_PKT
+    AUTH_RESPONSE = 2,
+    DATA_PKT = 3
 };
 
 #pragma pack(push, 1)
@@ -40,7 +40,8 @@ struct ParsedMessage {
         AuthResponse auth_response;
         DataPktHeader packet_header;
     };
-    char* payload = nullptr;
+    // char* payload = nullptr;
+    std::vector<char> packet_data;
 };
 
 
@@ -56,38 +57,7 @@ struct ParsedMessage {
 //     return true;
 // }
 
-bool sendAll(const int sockfd, const std::vector<char>& data){
-    size_t total_sent = 0;
-    const char* ptr = data.data();
-    size_t remaining = data.size();
 
-    while (remaining > 0) {
-        ssize_t sent = send(sockfd, ptr + total_sent, remaining, MSG_NOSIGNAL);
-        if (sent <= 0) {
-            return false;
-        }
-        total_sent += static_cast<size_t>(sent);
-        remaining -= static_cast<size_t>(sent);
-    }
-
-    return true;
-}
-
-bool sendPacketPayload(const int sockfd, const std::vector<char>& header, char* data, int size){
-    sendAll(sockfd, header);
-    size_t total_sent = 0;
-    size_t remaining = size;
-    while (remaining > 0) {
-        ssize_t sent = send(sockfd, data + total_sent, remaining, MSG_NOSIGNAL);
-        if (sent <= 0) {
-            return false;
-        }
-        total_sent += static_cast<size_t>(sent);
-        remaining -= static_cast<size_t>(sent);
-    }
-
-    return true;
-}
 
 /*
  * чтение из сокета, буферизируем данные, пока не вычитаем весь пакет.
@@ -108,8 +78,44 @@ private:
     size_t parsed_bytes_ = 0;
     bool is_timeout_ = false;
 
+    bool sendAll(const int sockfd, const std::vector<char>& data){
+        size_t total_sent = 0;
+        const char* ptr = data.data();
+        size_t remaining = data.size();
+
+        while (remaining > 0) {
+            ssize_t sent = send(sockfd, ptr + total_sent, remaining, MSG_NOSIGNAL);
+            if (sent <= 0) {
+                return false;
+            }
+            total_sent += static_cast<size_t>(sent);
+            remaining -= static_cast<size_t>(sent);
+        }
+
+        std::cout << "send header:" << total_sent << std::endl;
+        return true;
+    }
+
+    bool sendPacketPayload(const int sockfd, const std::vector<char>& header, char* data, int size){
+        sendAll(sockfd, header);
+        size_t total_sent = 0;
+        size_t remaining = size;
+        while (remaining > 0) {
+            ssize_t sent = send(sockfd, data + total_sent, remaining, MSG_NOSIGNAL);
+            if (sent <= 0) {
+                return false;
+            }
+            total_sent += static_cast<size_t>(sent);
+            remaining -= static_cast<size_t>(sent);
+        }
+        std::cout << "send data:" << total_sent << std::endl;
+
+        return true;
+    }
+
 public:
     MessageParser(int sockfd, size_t size_buff) : sockfd_(sockfd) {
+        // todo может только тогда когда используется
         // min for detect type for protect
         recv_buffer_.reserve(std::max(size_buff, sizeof(MessageType)));
         // setSocketTimeout(sockfd_, 1);
@@ -123,6 +129,7 @@ public:
                 return false;
             }
             if (is_timeout_){
+                std::cout << "timeout" << std::endl;
                 is_timeout_ = false;
                 if (wait_timeout){
                     continue;
@@ -274,9 +281,9 @@ private:
             available_space = recv_buffer_.capacity() - recv_buffer_.size();
         }
 
-        std::vector<char> temp_buf(available_space);
+        std::vector<char> temp_buf(1024);
         ssize_t received = recv(sockfd_, temp_buf.data(), temp_buf.size(), 0);
-
+        // std::cout << sockfd_ << " recv:" << received << " " << temp_buf.size() << " " << errno << std::endl;
         if (received > 0) {
             recv_buffer_.insert(recv_buffer_.end(),
                                 temp_buf.data(),

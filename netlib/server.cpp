@@ -78,7 +78,7 @@ bool SinglethreadServer::start()
 
     state_ = ServerState::RUNNING;
 
-    MessageParser parser(socket_, conf_.recv_buffer_size);
+
     ParsedMessage msg{};
     int client_sock;
     sockaddr_in address;
@@ -87,23 +87,44 @@ bool SinglethreadServer::start()
     while (true) {
         std::cout << "Waiting for a client..." << std::endl;
         if ((client_sock = accept(socket_, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
-            perror("accept failed");
+            if (client_sock == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // std::cout << "accept timeout" << std::endl;
+                } else {
+                    // Real error (e.g., EMFILE, ENFILE, ENOBUFS)—log and handle appropriately
+                    perror("accept");
+                }
+            }
             last_error_ = "accept failed";
             continue;
         }
         std::cout << "Client connected!" << std::endl;
 
         // connection handler - auth
-        if (parser.readMessage(msg, false) && msg.type == MessageType::AUTH_REQUEST){
+        MessageParser parser(client_sock, conf_.recv_buffer_size);
+        bool isRead = parser.readMessage(msg, false);
+        if (isRead && msg.type == MessageType::AUTH_REQUEST){
             //send AUTH_RESPONSE
             // fill msg need data
             auto uuid = msg.auth_response.client_uuid;
             parser.sendAuthResponce(msg, uuid, 0);// TODO:
         }else{
             close(client_sock);
-            std::cout << "Not our client!" << std::endl;
+            std::cout << "Not our client! read:" << isRead << " type:" << (int)msg.type << std::endl;
             continue;
         }
+
+
+        // std::vector<char> temp_buf(1024);
+        // ssize_t received = recv(client_sock, temp_buf.data(), temp_buf.size(), 0);
+        // std::cout << client_sock << " recv:" << received << " " << temp_buf.size() << " " << errno << std::endl;
+
+
+        //     // std::vector<char> buff(conf_.recv_buffer_size);
+        //     // ssize_t count_read = recv(client_sock, buff.data(), buff.size(), 0);
+        //     // std::cout << count_read << std::endl;
+        //     close(client_sock);
+        //     continue;
 
         // data handle
         while (true) {
@@ -113,10 +134,12 @@ bool SinglethreadServer::start()
             stats_.addBytes(msg.size_header);
 
             // (записываем в очередь) или (отправляем куда надо)
+            char*data = msg.packet_data.data();
+            int data_size = msg.packet_header.data_size;
 
             // write to file
             if (!conf_.filename.empty()){
-                write2file(conf_.filename, buff.data(), count_read);
+                write2file(conf_.filename, data, data_size);
             }
         }
 
@@ -142,7 +165,7 @@ bool SinglethreadServer::start()
         //     }
         // }
 
-        close(client_sock);
+        // close(client_sock);
         std::cout << "Closed connection. Waiting for new client..." << std::endl;;
     }
 
