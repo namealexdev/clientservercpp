@@ -92,6 +92,8 @@ void print_usage(const char* program_name) {
 
 int main(int argc, char* argv[])
 {
+    listen_mode_epoll(6767);
+    return 0;
     if (argc == 1 || argc >= 2 && std::string(argv[1]) == "-h") {
         print_usage(argv[0]);
         return 0;
@@ -144,17 +146,17 @@ int main(int argc, char* argv[])
     //     client_mode(host, port);
     // }
 
-    // if (is_listen){
-    //     listen_mode_epoll(port);
-    // }else{
-    //     client_mode_epoll(host, port);
-    // }
-
     if (is_listen){
-        listen_mode_iouring(port);
+        listen_mode_epoll(port);
     }else{
-        client_mode_iouring(host, port);
+        client_mode_epoll(host, port);
     }
+
+    // if (is_listen){
+    //     listen_mode_iouring(port);
+    // }else{
+    //     client_mode_iouring(host, port);
+    // }
 
     // new std::thread([&](){
     //     std::this_thread::sleep_for(std::chrono::seconds(1));

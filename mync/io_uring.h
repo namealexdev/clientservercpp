@@ -128,8 +128,8 @@ void listen_mode_iouring(int port)
 
     std::cout << "Listening on port " << port << "...\n";
 
-    int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_CLOEXEC);
-    close(listen_fd);
+    int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK);
+    // close(listen_fd);
     if (client_fd < 0) {
         std::cerr << "accept() failed: " << strerror(errno) << std::endl;
         return;

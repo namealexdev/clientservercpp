@@ -1,6 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <fcntl.h>
 const int BUFFER = 1 * 1024 * 1024; // 1 MiB // 65KiB 65536
 const int MAX_CONNECTIONS = 3;
 
@@ -45,7 +46,7 @@ int write_to_stdout(const void *buf, size_t len) {
 int create_socket(bool islisten, const std::string& host, int port)
 {
     int sock = -1;
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    if ((sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == 0) {
         std::cerr << "fail create socket" << std::endl;
         return -1;
     }
@@ -100,6 +101,14 @@ int create_socket(bool islisten, const std::string& host, int port)
             close(sock);
             return -1;
         }
+
+        // int flags = fcntl(sock, F_GETFL, 0);
+        // if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+        //     // perror("fcntl O_NONBLOCK");
+        //     std::cerr << "fcntl O_NONBLOCK failed" << std::endl;
+        //     close(sock);
+        //     return -1;
+        // }
 
         if (listen(sock, MAX_CONNECTIONS) < 0) {
             std::cerr << "listen failed" << std::endl;
