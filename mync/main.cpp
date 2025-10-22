@@ -34,7 +34,7 @@ void listen_mode(int port)
         }
         // close(sock);
 
-        std::thread worker([client_sock]() {
+        std::thread ([=]() {
             char buf[BUFFER];
             ssize_t n;
             while ((n = recv(client_sock, buf, sizeof(buf), 0)) > 0) {
@@ -52,7 +52,7 @@ void listen_mode(int port)
                 std::cerr << "recv() failed: " << strerror(errno) << std::endl;
             }
             close(client_sock);
-        });worker.detach();
+        }).detach();
 
     }
 
@@ -144,17 +144,17 @@ int main(int argc, char* argv[])
     //     client_mode(host, port);
     // }
 
-    if (is_listen){
-        listen_mode_epoll(port);
-    }else{
-        client_mode_epoll(host, port);
-    }
-
     // if (is_listen){
-    //     listen_mode_iouring(port);
+    //     listen_mode_epoll(port);
     // }else{
-    //     client_mode_iouring(host, port);
+    //     client_mode_epoll(host, port);
     // }
+
+    if (is_listen){
+        listen_mode_iouring(port);
+    }else{
+        client_mode_iouring(host, port);
+    }
 
     // new std::thread([&](){
     //     std::this_thread::sleep_for(std::chrono::seconds(1));

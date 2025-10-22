@@ -3,10 +3,11 @@
 
 #include "utils.h"
 #include <sys/epoll.h>
+#include <thread>
 
 // Двунаправленная передача: stdin ↔ sockfd
 static void bidirectional_relay(int sockfd) {
-    const int MAX_EVENTS = 2;
+    const int MAX_EVENTS = 2;// 2 fd консоль и сокет
     int epfd = epoll_create1(EPOLL_CLOEXEC);
     if (epfd == -1) {
         perror("epoll_create1");
@@ -14,11 +15,11 @@ static void bidirectional_relay(int sockfd) {
     }
 
     struct epoll_event ev;
-    ev.events = EPOLLIN | EPOLLRDHUP;
-    ev.data.fd = STDIN_FILENO;
+    ev.events = EPOLLIN | EPOLLRDHUP;// готов к чтению и закрыл соединение
+    ev.data.fd = STDIN_FILENO;// консоль
     epoll_ctl(epfd, EPOLL_CTL_ADD, STDIN_FILENO, &ev);
 
-    ev.data.fd = sockfd;
+    ev.data.fd = sockfd;// сокет
     epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &ev);
 
     char buf[65536];
@@ -27,9 +28,9 @@ static void bidirectional_relay(int sockfd) {
 
     while (!stdin_closed || !socket_closed) {
         struct epoll_event events[MAX_EVENTS];
-        int nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+        int nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);// блок
         if (nfds == -1) {
-            if (errno == EINTR) continue; // прерван сигналом — повтор
+            if (errno == EINTR) continue;
             perror("epoll_wait");
             break;
         }
@@ -39,12 +40,13 @@ static void bidirectional_relay(int sockfd) {
             uint32_t evs = events[i].events;
 
             // Проверка на закрытие/ошибку
+            //HUP-закрыт ERR-ошибка RDHUP-удаленно закрыл запись (узнаем без чтения)
             if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
                 if (fd == sockfd) socket_closed = true;
                 continue;
             }
 
-            // Данные из stdin → отправляем в сокет
+            // stdin → socket
             if (fd == STDIN_FILENO && (evs & EPOLLIN)) {
                 ssize_t n = read_from_stdin(buf, sizeof(buf));
                 if (n > 0) {
@@ -54,6 +56,7 @@ static void bidirectional_relay(int sockfd) {
                     }
                 } else if (n == 0) {
                     // EOF (Ctrl+D)
+                    // чтобы другая сторона дочитала все
                     shutdown(sockfd, SHUT_WR);
                     stdin_closed = true;
                 } else {
@@ -62,7 +65,7 @@ static void bidirectional_relay(int sockfd) {
                 }
             }
 
-            // Данные из сокета → выводим в stdout
+            // socket → stdout
             if (fd == sockfd && (evs & EPOLLIN)) {
                 ssize_t n = recv(sockfd, buf, sizeof(buf), 0);
                 if (n > 0) {
@@ -91,16 +94,20 @@ void listen_mode_epoll(int port)
 
     std::cout << "Listening on port " << port << "...\n";
 
-    int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_CLOEXEC);
-    close(listen_fd);
+    while(1){
+        int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_CLOEXEC);
+        // close(listen_fd);
 
-    if (client_fd < 0) {
-        std::cerr << "accept() failed: " << strerror(errno) << std::endl;
-        return;
+        if (client_fd < 0) {
+            std::cerr << "accept() failed: " << strerror(errno) << std::endl;
+            return;
+        }
+
+        std::thread([=]() {
+            bidirectional_relay(client_fd);
+            close(client_fd);
+        }).detach();
     }
-
-    bidirectional_relay(client_fd);
-    close(client_fd);
 
 }
 

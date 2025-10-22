@@ -5,10 +5,12 @@
 
 static void bidirectional_relay_io_uring(int sockfd) {
     const size_t BUF_SIZE = 65536;
-    char buf_stdin[BUF_SIZE];   // буфер для stdin → сокет
-    char buf_socket[BUF_SIZE];  // буфер для сокет → stdout
+    char buf_stdin[BUF_SIZE];   // буфер для stdin → socket
+    char buf_socket[BUF_SIZE];  // буфер для socket → stdout
 
     struct io_uring ring;
+    // одновременные операции, которые можно положить в очередь - 32
+    // зависит от ожидаемого кол-ва системных вызовов
     if (io_uring_queue_init(32, &ring, 0) != 0) {
         perror("io_uring_queue_init");
         return;
@@ -17,11 +19,13 @@ static void bidirectional_relay_io_uring(int sockfd) {
     // Флаги завершения
     bool stdin_closed = false;
     bool socket_closed = false;
+    //какие операции сейчас выполняются в ядре
     bool pending_stdin_read = false;
     bool pending_socket_read = false;
 
     // Запускаем первые операции чтения
     if (!stdin_closed) {
+        // получение Submission Queue - очередь на исполнение - Кольцевой буфер операций для отправки в ядро
         struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
         io_uring_prep_read(sqe, STDIN_FILENO, buf_stdin, BUF_SIZE, 0);
         sqe->user_data = 1; // 1 = stdin
@@ -35,10 +39,12 @@ static void bidirectional_relay_io_uring(int sockfd) {
         pending_socket_read = true;
     }
 
-    io_uring_submit(&ring);
+    io_uring_submit(&ring);// отправка операций на ядро
 
     while (!stdin_closed || !socket_closed || pending_stdin_read || pending_socket_read) {
+        // cqe - completion queue - очередь завершения
         struct io_uring_cqe *cqe;
+        // ожидание любой завершенной операции
         int ret = io_uring_wait_cqe(&ring, &cqe);
         if (ret != 0) {
             if (ret == -EINTR) continue;
@@ -48,9 +54,11 @@ static void bidirectional_relay_io_uring(int sockfd) {
 
         uint64_t user_data = cqe->user_data;
         int res = cqe->res;
+        // помечаем завершенную операцию как обработанную
         io_uring_cqe_seen(&ring, cqe);
 
-        if (user_data == 1) { // stdin → сокет
+        // stdin → socket
+        if (user_data == 1) {
             pending_stdin_read = false;
             if (res > 0) {
                 // Отправляем в сокет
@@ -71,13 +79,20 @@ static void bidirectional_relay_io_uring(int sockfd) {
             // Запрашиваем следующее чтение из stdin, если ещё не закрыт
             if (!stdin_closed) {
                 struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+                if (sqe == NULL){
+                    // очередь полна!
+                    io_uring_submit(&ring);  // Принудительный системный вызов
+                    sqe = io_uring_get_sqe(&ring); // Теперь место есть
+                }
                 io_uring_prep_read(sqe, STDIN_FILENO, buf_stdin, BUF_SIZE, 0);
                 sqe->user_data = 1;
                 pending_stdin_read = true;
-                io_uring_submit(&ring);
+                io_uring_submit(&ring);// отправка операций на ядро
             }
 
-        } else if (user_data == 2) { // сокет → stdout
+        }
+        // socket → stdout
+        else if (user_data == 2) {
             pending_socket_read = false;
             if (res > 0) {
                 if (write(STDOUT_FILENO, buf_socket, res) != res) {
