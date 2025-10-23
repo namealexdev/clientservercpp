@@ -15,14 +15,15 @@ const int MAX_CONNECTIONS = 3;
 #include <netdb.h>
 
 // return count bytes, 0 - stdin закрыт, -1 error
-// ssize_t read_from_stdin(void *buf, size_t maxlen) {
-//     ssize_t n;
-//     do {
-//         n = read(STDIN_FILENO, buf, maxlen);
-//     } while (n == -1 && errno == EINTR); // повтор при прерывании сигналом
-
-//     return n;
-// }
+ssize_t read_from_stdin(void *buf, size_t maxlen) {
+    ssize_t n;
+    do {
+        n = read(STDIN_FILENO, buf, maxlen);
+        // std::cout <<"in read " << n << std::endl;
+    } while (n == -1 && errno == EINTR); // повтор при прерывании сигналом
+// std::cout <<"stop " << n << std::endl;
+    return n;
+}
 
 // // 0 ok, -1 error
 // int write_to_stdout(const void *buf, size_t len) {
@@ -43,9 +44,9 @@ const int MAX_CONNECTIONS = 3;
 //     return 0;
 // }
 
-ssize_t read_from_stdin(char* buffer, size_t size) {
-    return read(STDIN_FILENO, buffer, size);
-}
+// ssize_t read_from_stdin(char* buffer, size_t size) {
+//     return read(STDIN_FILENO, buffer, size);
+// }
 
 int write_to_stdout(const char* buffer, size_t size) {
     return write(STDOUT_FILENO, buffer, size) == (ssize_t)size ? 0 : -1;
@@ -55,8 +56,7 @@ int create_socket(bool islisten, const std::string& host, int port)
 {
     int sock = -1;
     int type = SOCK_STREAM;
-    if (islisten)
-        type |= SOCK_NONBLOCK;
+    if (islisten) type |= SOCK_NONBLOCK;
     if ((sock = socket(AF_INET, type, 0)) == 0) {
         std::cerr << "fail create socket" << std::endl;
         return -1;
