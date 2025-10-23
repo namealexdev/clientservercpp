@@ -3,7 +3,7 @@
 #include "utils.h"
 #include <liburing.h>
 
-static void bidirectional_relay_io_uring(int sockfd) {
+static void bidirectional_relay_io_uring(int sockfd, bool islisten) {
     const size_t BUF_SIZE = 65536;
     char buf_stdin[BUF_SIZE];   // буфер для stdin → socket
     char buf_socket[BUF_SIZE];  // буфер для socket → stdout
@@ -128,23 +128,23 @@ void listen_mode_iouring(int port)
 
     std::cout << "Listening on port " << port << "...\n";
 
-    int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK);
-    // close(listen_fd);
-    if (client_fd < 0) {
-        std::cerr << "accept() failed: " << strerror(errno) << std::endl;
-        return;
-    }
+    // int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK);
+    // // close(listen_fd);
+    // if (client_fd < 0) {
+    //     std::cerr << "accept() failed: " << strerror(errno) << std::endl;
+    //     return;
+    // }
 
-    bidirectional_relay_io_uring(client_fd);
-    close(client_fd);
+    bidirectional_relay_io_uring(listen_fd, true);
+    // close(client_fd);
 }
 
 void client_mode_iouring(std::string host, int port)
 {
     int sockfd = create_socket(false, host, port);
     if (sockfd < 0) return;
-    bidirectional_relay_io_uring(sockfd);
-    close(sockfd);
+    bidirectional_relay_io_uring(sockfd, false);
+    // close(sockfd);
 }
 
 #endif // IO_URING_H

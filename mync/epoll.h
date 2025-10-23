@@ -4,7 +4,6 @@
 #include "utils.h"
 #include <sys/epoll.h>
 #include <unordered_map>
-#include <unordered_set>
 #include "stats.h"
 
 const int timer_timeout_secs = 1;
@@ -387,6 +386,7 @@ public:
                     // if (need_stop) break;
                     ssize_t n = recv(client_sock->first, buf, sizeof(buf), 0);
                     if (n > 0) {
+                        // client_sock->second.addBytes(n);
                         if (write_to_stdout(buf, n) != 0) {
                             std::cerr << "write to stdout failed" << std::endl;
                             break;
@@ -394,6 +394,7 @@ public:
                     } else if (n == 0) {
                         // Пир закрыл соединение
                         socket_closed = true;
+                        client_sock->second.total_bytes = 0;
                     } else {
                         std::cerr << "recv() failed: " << strerror(errno) << std::endl;
                         socket_closed = true;
@@ -416,6 +417,30 @@ public:
 };
 
 
+#include <sys/timerfd.h>
+int create_timer() {
+    int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (timer_fd == -1) {
+        perror("timerfd_create");
+        return -1;
+    }
+
+    // Настройка таймера на 1 секунду
+    itimerspec timer_spec{};
+    timer_spec.it_value.tv_sec = 5;    // Первый сработает через 5 сек
+    timer_spec.it_value.tv_nsec = 0;
+    timer_spec.it_interval.tv_sec = 5; // Повторять каждую секунду
+    timer_spec.it_interval.tv_nsec = 0;
+
+    if (timerfd_settime(timer_fd, 0, &timer_spec, nullptr) == -1) {
+        perror("timerfd_settime");
+        close(timer_fd);
+        return -1;
+    }
+
+    return timer_fd;
+}
+
 // #define d(x) std::cout << x << std::endl;
 #define d(x) ;
 
@@ -435,12 +460,24 @@ void bidirectional_relay(int sockfd, bool islisten) {
     ev.data.fd = sockfd;// сокет
     epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &ev);
 
+    int timerfd = -1;
+    if (islisten){
+        timerfd = create_timer();
+        ev.events = EPOLLIN;
+        ev.data.fd = timerfd;
+        int et = epoll_ctl(epfd, EPOLL_CTL_ADD, timerfd, &ev);
+        std::cout << "timer " << timerfd << " " << et << std::endl;
+    }
+
+    time_t start = time(nullptr);
+
     char buf[65536];
     bool stdin_closed = false;
     bool socket_closed = false;
     std::unordered_map<int, Stats> clients;
 
-    while (!stdin_closed || !socket_closed) {
+    while (!stdin_closed && !socket_closed) {
+        // std::cout << "while " << stdin_closed << " scl:" << socket_closed << std::endl;
         struct epoll_event events[MAX_EVENTS];
         int nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);// блок
         if (nfds == -1) {
@@ -453,7 +490,7 @@ void bidirectional_relay(int sockfd, bool islisten) {
             int fd = events[i].data.fd;
             uint32_t evs = events[i].events;
 
-            d(i <<" epoll " << fd << " " << evs)
+            // d(i <<" epoll " << fd << " " << evs)
 
             // Проверка на закрытие/ошибку
             //HUP-закрыт ERR-ошибка RDHUP-удаленно закрыл запись (узнаем без чтения)
@@ -474,6 +511,36 @@ void bidirectional_relay(int sockfd, bool islisten) {
                 continue;
             }
 
+            if (timerfd > 0 && fd == timerfd){
+                // Таймер сработал
+                uint64_t expirations;
+                ssize_t s = read(timerfd, &expirations, sizeof(expirations));
+                if (s == sizeof(expirations)) {
+                    // Выводим статистику
+                    time_t end = time(nullptr);
+                    std::cout << "\n=== Stats at " << ctime(&end) << " Uptime:" << (end - start)
+                              << " s clients: " << clients.size();
+                }
+
+                // send stats if has 4gb & print stats
+                uint64_t sum_bps = 0;
+                for (auto c: clients){
+                    string stats = c.second.get_stats();
+                    if (c.second.is4gb()){
+                        ssize_t sz = send(c.first, stats.c_str(), stats.size(), MSG_NOSIGNAL);
+                        if (sz != stats.size()){
+                            std::cerr << c.first << " send() failed 1: " << strerror(errno) << std::endl;
+                        }
+                    }
+                    std::cout << stats << std::endl;
+                    sum_bps += c.second.bps;
+                }
+
+                if (sum_bps > 0)
+                    std::cout << "\t total:" << Stats::formatBitrate(sum_bps)<< std::endl;
+                continue;
+            }
+
             // stdin → socket
             if (fd == STDIN_FILENO && (evs & EPOLLIN)) {
                 if (islisten){
@@ -484,7 +551,7 @@ void bidirectional_relay(int sockfd, bool islisten) {
                         for (auto c: clients){
                             d("send " << c.first)
                             if (send(c.first, buf, n, MSG_NOSIGNAL) != n) {
-                                std::cerr << c.first << " send() failed: " << strerror(errno) << std::endl;
+                                std::cerr << c.first << " send() failed 2: " << strerror(errno) << std::endl;
                                 socket_closed = true;
                             }
                         }
@@ -504,7 +571,7 @@ void bidirectional_relay(int sockfd, bool islisten) {
                     if (n > 0) {
                         d("cl send " << n)
                         if (send(sockfd, buf, n, MSG_NOSIGNAL) != n) {
-                            std::cerr << "send() failed: " << strerror(errno) << std::endl;
+                            std::cerr << "send() failed 3: " << strerror(errno) << std::endl;
                             socket_closed = true;
                         }
                         d("cl af send " << n)
@@ -588,8 +655,10 @@ void bidirectional_relay(int sockfd, bool islisten) {
 
             auto client_sock = clients.find(fd);
             if (client_sock != clients.end()){
-                d("server: socket → stdout")
+
                 ssize_t n = recv(client_sock->first, buf, sizeof(buf), 0);
+                d("server: socket → stdout " << n)
+                client_sock->second.addBytes(n);
                 if (n > 0) {
                     if (write_to_stdout(buf, n) != 0) {
                         std::cerr << "write to stdout failed" << std::endl;
