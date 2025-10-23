@@ -2,7 +2,6 @@
 #define STATS_H
 
 #include "const.h"
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
@@ -10,39 +9,49 @@
 
 class Stats {
 public:
+    std::string ip;
+    double last_bps = 0;
+
     void addBytes(size_t bytes) {
-        total_bytes.fetch_add(bytes, std::memory_order_relaxed);
+        total_bytes += bytes;
+    }
+
+    void update_stats(){
+
+    }
+
+    void get_stats(){
+
     }
 
     //  скорость за интервал с последнего вызова
     string getBitrate() {
         auto now = std::chrono::steady_clock::now();
-        uint64_t current_bytes = total_bytes.load(std::memory_order_relaxed);
 
         // Защита от первого вызова
         if (last_time.time_since_epoch().count() == 0) {
             last_time = now;
-            last_bytes = current_bytes;
+            last_bytes = total_bytes;
             return "0";
         }
 
         auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time).count();
         if (elapsed <= 0.0) return "0";
 
-        uint64_t delta = current_bytes - last_bytes;
+        uint64_t delta = total_bytes - last_bytes;
 
         // Обновляем состояние
         last_time = now;
-        last_bytes = current_bytes;
+        last_bytes = total_bytes;
 
         double bps = (delta * 8.0) / elapsed; // bits per second
         double btps = (delta) / elapsed; // bytes per second
+        last_bps = btps;
         return formatBitrate(btps) + " " + formatBitrate(bps, false);
     }
 
 private:
-    std::atomic<uint64_t> total_bytes{0};
-
+    uint64_t total_bytes;
     uint64_t last_bytes = 0;
     std::chrono::steady_clock::time_point last_time{};
 

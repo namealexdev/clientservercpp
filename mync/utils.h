@@ -15,38 +15,49 @@ const int MAX_CONNECTIONS = 3;
 #include <netdb.h>
 
 // return count bytes, 0 - stdin закрыт, -1 error
-ssize_t read_from_stdin(void *buf, size_t maxlen) {
-    ssize_t n;
-    do {
-        n = read(STDIN_FILENO, buf, maxlen);
-    } while (n == -1 && errno == EINTR); // повтор при прерывании сигналом
+// ssize_t read_from_stdin(void *buf, size_t maxlen) {
+//     ssize_t n;
+//     do {
+//         n = read(STDIN_FILENO, buf, maxlen);
+//     } while (n == -1 && errno == EINTR); // повтор при прерывании сигналом
 
-    return n;
+//     return n;
+// }
+
+// // 0 ok, -1 error
+// int write_to_stdout(const void *buf, size_t len) {
+//     const char *p = (const char *)buf;
+//     size_t written = 0;
+//     ssize_t n;
+
+//     while (written < len) {
+//         n = write(STDOUT_FILENO, p + written, len - written);
+//         if (n == -1) {
+//             if (errno == EINTR) {
+//                 continue; // повторить
+//             }
+//             return -1;
+//         }
+//         written += n;
+//     }
+//     return 0;
+// }
+
+ssize_t read_from_stdin(char* buffer, size_t size) {
+    return read(STDIN_FILENO, buffer, size);
 }
 
-// 0 ok, -1 error
-int write_to_stdout(const void *buf, size_t len) {
-    const char *p = (const char *)buf;
-    size_t written = 0;
-    ssize_t n;
-
-    while (written < len) {
-        n = write(STDOUT_FILENO, p + written, len - written);
-        if (n == -1) {
-            if (errno == EINTR) {
-                continue; // прерван сигналом — повторить
-            }
-            return -1;
-        }
-        written += n;
-    }
-    return 0;
+int write_to_stdout(const char* buffer, size_t size) {
+    return write(STDOUT_FILENO, buffer, size) == (ssize_t)size ? 0 : -1;
 }
 
 int create_socket(bool islisten, const std::string& host, int port)
 {
     int sock = -1;
-    if ((sock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == 0) {
+    int type = SOCK_STREAM;
+    if (islisten)
+        type |= SOCK_NONBLOCK;
+    if ((sock = socket(AF_INET, type, 0)) == 0) {
         std::cerr << "fail create socket" << std::endl;
         return -1;
     }
@@ -97,7 +108,7 @@ int create_socket(bool islisten, const std::string& host, int port)
 
     if (islisten){
         if (bind(sock, (struct sockaddr*)&address, sizeof(address)) < 0) {
-            std::cerr << "bind failed" << std::endl;
+            std::cerr << "listen bind failed" << std::endl;
             close(sock);
             return -1;
         }
@@ -117,7 +128,7 @@ int create_socket(bool islisten, const std::string& host, int port)
         }
     }else{
         if (::connect(sock, (struct sockaddr*)&address, sizeof(address)) < 0) {
-            std::cerr << "connection failed" << std::endl;
+            std::cerr << "connect failed" << std::endl;
             close(sock);
             return -1;
         }

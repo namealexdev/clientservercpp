@@ -38,8 +38,8 @@ void listen_mode(int port)
             char buf[BUFFER];
             ssize_t n;
             while ((n = recv(client_sock, buf, sizeof(buf), 0)) > 0) {
-                gcount_packets++;
-                gcount_bytes+=n;
+                // gcount_packets++;
+                // gcount_bytes+=n;
                 if (write_to_stdout(buf, n) != 0) {
                     std::cerr << "write to stdout failed" << std::endl;
                     break;
@@ -68,8 +68,8 @@ void client_mode(std::string host, int port)
     char buf[BUFFER];
     ssize_t n;
     while ((n = read_from_stdin(buf, sizeof(buf))) > 0) {
-        gcount_packets++;
-        gcount_bytes+=n;
+        // gcount_packets++;
+        // gcount_bytes+=n;
         if (send(sock, buf, n, MSG_NOSIGNAL) != n) {
             std::cerr << "send() failed: " << strerror(errno) << std::endl;
             break;
@@ -92,8 +92,6 @@ void print_usage(const char* program_name) {
 
 int main(int argc, char* argv[])
 {
-    listen_mode_epoll(6767);
-    return 0;
     if (argc == 1 || argc >= 2 && std::string(argv[1]) == "-h") {
         print_usage(argv[0]);
         return 0;
@@ -137,8 +135,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    gstartup = std::chrono::steady_clock::now();
-    signal(SIGINT, signal_handler);
+    // gstartup = std::chrono::steady_clock::now();
+    // signal(SIGINT, signal_handler);
 
     // if (is_listen){
     //     listen_mode(port);
