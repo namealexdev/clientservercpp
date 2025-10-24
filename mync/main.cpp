@@ -144,17 +144,20 @@ int main(int argc, char* argv[])
     //     client_mode(host, port);
     // }
 
-    if (is_listen){
-        listen_mode_epoll(port);
-    }else{
-        client_mode_epoll(host, port);
-    }
-
     // if (is_listen){
-    //     listen_mode_iouring(port);
+    //     listen_mode_epoll(port);
     // }else{
-    //     client_mode_iouring(host, port);
+    //     client_mode_epoll(host, port);
     // }
+
+    const int COUNT_THREADS = std::thread::hardware_concurrency();//24 100 сокетов /24 ядра = 5 (2+3,5,(еще 22 раза по 5)...)
+    std::cout << COUNT_THREADS;
+
+    if (is_listen){
+        listen_mode_iouring(port);
+    }else{
+        client_mode_iouring(host, port);
+    }
 
     // new std::thread([&](){
     //     std::this_thread::sleep_for(std::chrono::seconds(1));
