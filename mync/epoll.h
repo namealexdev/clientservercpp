@@ -40,7 +40,7 @@ class Epoll {
     int timerfd = -1;
     std::unordered_map<int, Stats> clients;
     time_t start_time;
-    char buffer[65536];
+    char buffer[1000000];// 65536 65Kb 1000000 1Mb
     bool stdin_closed = false;
     bool socket_closed = false;
 
@@ -124,6 +124,17 @@ class Epoll {
             sockaddr_in client_addr{};
             socklen_t addr_len = sizeof(client_addr);
             int client_fd = accept4(sockfd, (sockaddr*)&client_addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+
+            // Увеличение буфера отправки
+            const int bufsize = 1000000;
+            if (setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0) {
+                perror("setsockopt SO_SNDBUF");
+            }
+
+            // Увеличение буфера приема
+            if (setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)) < 0) {
+                perror("setsockopt SO_RCVBUF");
+            }
 
             if (client_fd == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
