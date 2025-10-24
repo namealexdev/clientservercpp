@@ -17,78 +17,143 @@ using namespace std;
 #include <iomanip>
 #include <sstream>
 
+
 class Stats {
-    std::chrono::time_point<std::chrono::steady_clock> start;
+private:
+    // Константы
+    static constexpr uint64_t FOUR_GIB_BYTES = 4ULL * 1024 * 1024 * 1024; // 4 GiB
+    static constexpr double NANOSECONDS_TO_SECONDS = 1e9;
+
+    std::chrono::steady_clock::time_point start;
+
+    // отслеживание 4 ГБайт
+    uint64_t bytes_current_interval = 0;
+    uint64_t packets_current_interval = 0;
+    std::chrono::steady_clock::time_point interval_start_time; // Время начала текущего 4GB интервала
+
+    // расчет с последнего вызова
+    uint64_t last_bytes_for_bps = 0;
+    uint64_t last_packets_for_pps = 0;
+    std::chrono::steady_clock::time_point last_time_for_bps_pps;
+
 public:
-
-    Stats(){
-        start = last_time = std::chrono::steady_clock::now();
-        update_bitrate();
-    }
-    std::string ip;
-    double bps = 0.0;
-    uint64_t total_bytes = 0;
-
-    void addBytes(size_t bytes) {
-        total_bytes += bytes;
-    }
-
-    // каждые 4gb считаем битрейт, скидываем total в 0
-    bool is4gb(){
-        const uint64_t FOUR_GIB = 4ULL * 1024 * 1024 * 1024; // 4 GiB = 4 * 2^30
-        // std::cout << "is4 " << total_bytes << std::endl;
-        update_bitrate();
-        if (total_bytes >= FOUR_GIB){
-
-            total_bytes -= FOUR_GIB;
-            return true;
-        }
-        return false;
-    }
-
-    string get_stats(){
-        std::cout << " get_stats " << bps << std::endl;
-        std::stringstream s;
-        s << "\n" << format_duration_since(start) << "\t" << ip << " " << formatBitrate(bps);
-        return s.str();
-    }
-
-    //  скорость за интервал с последнего вызова
-    void update_bitrate() {
+    // Обновление bps и pps
+    void updateBps() {
         auto now = std::chrono::steady_clock::now();
 
-        // Защита от первого вызова
-        if (last_time.time_since_epoch().count() == 0) {
-            last_time = now;
-            last_bytes = total_bytes;
-            return ;//"0";
+        // Защита от первого вызова или если время не изменилось
+        auto elapsed_ns = std::chrono::duration<double, std::nano>(now - last_time_for_bps_pps).count();
+        if (elapsed_ns <= 0.0) {
+            return;
         }
 
-        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time).count();
-        std::cout << "\n elapsed" << elapsed << "\n";
-        if (elapsed <= 0.0) return ;//"0";
-
-        uint64_t delta = total_bytes - last_bytes;
+        uint64_t delta_bytes = bytes_current_interval - last_bytes_for_bps;
+        uint64_t delta_packets = packets_current_interval - last_packets_for_pps;
 
         // Обновляем состояние
-        last_time = now;
-        last_bytes = total_bytes;
+        last_bytes_for_bps = bytes_current_interval;
+        last_packets_for_pps = packets_current_interval;
+        last_time_for_bps_pps = now;
 
-        bps = (delta * 8.0) / elapsed; // bits per second
-        std::cout << "delta:" << delta << " el:" << elapsed << " bps:" << bps << std::endl;
-        // return formatBitrate(bps);
-        // double btps = (delta) / elapsed; // bytes per second
-        // return formatBitrate(btps, true) + " " + formatBitrate(bps, false);
+        // Рассчитываем bps и pps
+        current_bps = (delta_bytes * 8.0) / (elapsed_ns / NANOSECONDS_TO_SECONDS);
+        current_pps = static_cast<double>(delta_packets) / (elapsed_ns / NANOSECONDS_TO_SECONDS);
     }
 
-private:
 
-    uint64_t last_bytes = 0;
-    std::chrono::steady_clock::time_point last_time{};
+    // Конструктор
+    Stats() : interval_start_time(std::chrono::steady_clock::now()) {
+        last_time_for_bps_pps = start = interval_start_time;
+    }
 
-    std::string format_duration_since(std::chrono::steady_clock::time_point start) {
+    // IP клиента (для вывода)
+    std::string ip;
+    double current_bps = 0.0;
+    double current_pps = 0.0;
+
+    // Функция добавления байт (и пакета)
+    void addBytes(size_t bytes) {
+        bytes_current_interval += bytes;
+        packets_current_interval += 1; // Увеличиваем счетчик пакетов на 1
+    }
+
+    // Функция проверки 4 ГБ и генерации сообщения
+    // Возвращает true, если 4 ГБ были достигнуты и сообщение сгенерировано
+    // Возвращает false, если 4 ГБ еще не достигнуто
+    // Сообщение возвращается через параметр-ссылку message
+    bool checkFourGigabytes(std::string& message) {
+        if (bytes_current_interval >= FOUR_GIB_BYTES) {
+            // 1. Рассчитываем время для 4GB сообщения
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed_interval = std::chrono::duration<double>(now - interval_start_time).count();
+
+            // 2. Формируем сообщение
+            std::ostringstream oss;
+            oss << "\n" << format_duration_since(interval_start_time)
+                << " " << ip << " 4gb " << std::fixed << std::setprecision(2) << elapsed_interval << " s \n";
+            message = oss.str();
+
+            // 3. Сбрасываем интервал
+            resetStats();
+
+            return true; // Сообщение готово
+        }
+        return false; // 4 ГБ еще не достигнуто
+    }
+
+    void resetStats(){
+        bytes_current_interval = 0;
+        packets_current_interval = 0;
+        interval_start_time = std::chrono::steady_clock::now();
+        // Сбрасываем bps/pps счетчики тоже, чтобы не учитывать прошлые данные
+        last_bytes_for_bps = 0;
+        last_packets_for_pps = 0;
+        last_time_for_bps_pps = interval_start_time; // или std::chrono::steady_clock::now()
+        current_bps = 0.0;
+        current_pps = 0.0;
+    }
+
+    string get_stats() {
+
+        // Рассчитываем elapsed время с последнего обновления bps/pps
+        // auto now = std::chrono::steady_clock::now();
+        // auto elapsed_since_last_update = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time_for_bps_pps).count();
+
+        std::ostringstream oss;
+        oss << format_duration_since(start) // Используем start для общего uptime
+            << "\t" << ip
+            << "\t" << formatValue(current_bps, "bps")
+            << " " << formatValue(current_pps, "pps");
+            // << " ("<< std::fixed << std::setprecision(3) << elapsed_since_last_update << "ms)";
+        return oss.str();
+
+        // return format_duration_since(start)
+        //                           + "\t" + ip
+        //                           + "\t" + formatValue(current_bps, "bps") + " " + formatValue(current_pps, "pps");
+    }
+
+
+    // Вспомогательная функция для форматирования битрейта/pps
+    static std::string formatValue(double value, const std::string& unit) {
+        if (value < 0) return "invalid";
+
+        const char* units[] = {"", "K", "M", "G", "T"};
+        size_t unit_index = 0;
+        double v = value;
+
+        while (v >= 1000.0 && unit_index < sizeof(units) / sizeof(units[0]) - 1) {
+            v /= 1000.0;
+            ++unit_index;
+        }
+
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(2) << v << " " << units[unit_index] << unit;
+        return oss.str();
+    }
+
+    static std::string format_duration_since(std::chrono::steady_clock::time_point start_time) {
         auto now = std::chrono::steady_clock::now();
-        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
+        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
 
         auto total_ms = dur.count();
         auto hours = total_ms / (3600 * 1000);
@@ -107,33 +172,7 @@ private:
 
         return oss.str();
     }
-public:
-    /// false = bits
-    static std::string formatBitrate(double bps, bool bytes = true)
-    {
-        if (bps < 0) return "invalid";
 
-        const char* byte_units[] = {"bytes", "Kbytes", "Mbytes", "Gbytes", "Tbytes"};
-        const char* bitrate_units[] = {"bits/s", "Kbits/s", "Mbits/s", "Gbits/s", "Tbits/s"};
-        const char** units;
-        if (bytes){
-            units = byte_units;
-        }else{
-            units = bitrate_units;
-        }
-
-        size_t unit_index = 0;
-        double value = bps;
-
-        while (value >= 1000.0 && unit_index < sizeof(byte_units) / sizeof(byte_units[0]) - 1) {
-            value /= 1000.0;
-            ++unit_index;
-        }
-
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(2) << value << " " << units[unit_index];
-        return oss.str();
-    }
 };
 
 void signal_handler(int sig) {
