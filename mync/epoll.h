@@ -2,8 +2,13 @@
 #define EPOLL_H
 
 #include "utils.h"
+#include <atomic>
+#include <mutex>
+#include <queue>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <unordered_map>
+#include <vector>
 #include "stats.h"
 
 const int timer_timeout_secs = 1;
@@ -34,12 +39,15 @@ int create_timer() {
 }
 
 #define d(x) std::cout << x << std::endl;
-const size_t BUF_SIZE = 1 * 1024 * 1024; // 1MB
+const size_t BUF_SIZE = 1024;
+#include <pthread.h>
 
 class Epoll {
     int epfd;
-    int sockfd;
+    // -1 - disable
+    int sockfd = -1;
     bool is_listen;
+    bool show_timer_stats;
     int timerfd = -1;
     std::unordered_map<int, Stats> clients;
     time_t start_time;
@@ -52,22 +60,50 @@ class Epoll {
         if (epfd == -1) throw std::runtime_error("epoll_create1");
 
         add_fd(STDIN_FILENO, EPOLLIN | EPOLLRDHUP);
-        add_fd(sockfd, EPOLLIN | EPOLLRDHUP );//EPOLLET
 
-        if (is_listen) {
+        if (sockfd > 0){
+            add_fd(sockfd, EPOLLIN | EPOLLRDHUP );//EPOLLET
+        }
+
+        event_external_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+        if (event_external_fd == -1) {
+            throw std::runtime_error("eventfd");
+        }
+        add_fd(event_external_fd, EPOLLIN);
+
+        // only for server and subserver
+        if (is_listen || sockfd == -1) {
             timerfd = create_timer();
             if (timerfd > 0)
                 add_fd(timerfd, EPOLLIN);
         }
     }
+    // @return On success, these functions return 0
+    inline int SetAffinityMask(int core_id) noexcept {
+        if (core_id < 0)
+            return -1;
 
-    void add_fd(int fd, uint32_t events) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(core_id, &cpuset);
+        return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    }
+
+    bool add_fd(int fd, uint32_t events) {
         epoll_event ev{};
         ev.events = events;
         ev.data.fd = fd;
         if (epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) == -1) {
-            throw std::runtime_error("epoll_ctl add");
+            // throw std::runtime_error("epoll_ctl add");
+            std::cout << "fail epoll_ctl add" << std::endl;
+            return false;
         }
+
+        // не нужно для статистики
+        // if (!(fd == STDIN_FILENO || event_external_fd)){
+        count_fd++;
+        // }
+        return true;
     }
 
     void handle_stdin() {
@@ -96,6 +132,7 @@ class Epoll {
         ssize_t n;
         n = recv(fd, buffer, sizeof(buffer), 0);
         if (n > 0) {
+            // std::cout << "1handle_client_data " << n << std::endl;
             clients[fd].addBytes(n);
             if (write_to_stdout(buffer, n) != 0) {
                 throw std::runtime_error("write to stdout");
@@ -129,6 +166,8 @@ class Epoll {
         } else {
             // handle_client_data
             ssize_t n;
+            // это не SubEpoll, тут не нужна статистика
+            // std::cout << "2handle_socket_data " << n << std::endl;
             n = recv(sockfd, buffer, sizeof(buffer), 0);
             if (n > 0) {
                 if (write_to_stdout(buffer, n) != 0) {
@@ -169,24 +208,33 @@ class Epoll {
             }
 
             // Увеличение буфера отправки
-            const int bufsize = BUF_SIZE;
-            if (setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0) {
-                perror("setsockopt SO_SNDBUF");
-            }
+            // const int bufsize = BUF_SIZE;
+            // if (setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0) {
+            //     perror("setsockopt SO_SNDBUF");
+            // }
 
-            // Увеличение буфера приема
-            if (setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)) < 0) {
-                perror("setsockopt SO_RCVBUF");
-            }
-
-            add_fd(client_fd, EPOLLIN | EPOLLRDHUP );
+            // // Увеличение буфера приема
+            // if (setsockopt(client_fd, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)) < 0) {
+            //     perror("setsockopt SO_RCVBUF");
+            // }
 
             char ip_str[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
             Stats st;
             st.ip = string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
-            clients.emplace(client_fd, std::move(st));
-            std::cout << "Added socket: " << client_fd << " (" << clients[client_fd].ip << ")" << std::endl;
+
+            // тут надо распределять это все по потокам
+            if (!balance_socket(client_fd, st)){
+                if (!add_fd(client_fd, EPOLLIN | EPOLLRDHUP )){
+                    close(client_fd);
+                }else{
+                    clients.emplace(client_fd, std::move(st));
+                    size_clients++;
+                    std::cout << "Added socket: " << client_fd << " (" << clients[client_fd].ip << ")" << std::endl;
+                }
+
+            }
+
         }
     }
 
@@ -194,8 +242,11 @@ class Epoll {
         uint64_t expirations;
         if (read(timerfd, &expirations, sizeof(expirations)) != sizeof(expirations)) return;
 
-        time_t now = time(nullptr);
-        std::cout << "======== Uptime: " << (now - start_time) << " s clients: " << clients.size() << "\n";
+        if (show_timer_stats){
+            time_t now = time(nullptr);
+            std::cout << "======== Uptime: " << (now - start_time) << " s clients: " << clients.size() << "\n";
+            show_shared_stats();
+        }
 
         uint64_t total_bps = 0;
         for (auto& [fd, stats] : clients) {
@@ -204,23 +255,29 @@ class Epoll {
             if (stats.checkFourGigabytes(stats_msg)) {
                 send(fd, stats_msg.c_str(), stats_msg.size(), MSG_NOSIGNAL);
             }
-            std::cout << stats.get_stats() << std::endl;
-            total_bps += stats.current_bps;
+            if (show_timer_stats){
+                std::cout << stats.get_stats() << std::endl;
+                total_bps += stats.current_bps;
+            }
         }
 
-        if (total_bps > 0) {
+        if (show_timer_stats && total_bps > 0) {
             std::cout << "\t\ttotal:\t\t" << Stats::formatValue(total_bps, "bps") << std::endl;
         }
     }
 
     void remove_client(int fd) {
+        count_fd--;
         epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
         clients.erase(fd);
+        size_clients--;
         close(fd);
     }
 
 public:
-    Epoll(int sock, bool listen) : sockfd(sock), is_listen(listen) {
+
+    Epoll(int sock, bool listen, int show_timer_stats) :
+        sockfd(sock), is_listen(listen), show_timer_stats(show_timer_stats) {
         start_time = time(nullptr);
         setup_epoll();
     }
@@ -228,6 +285,7 @@ public:
     ~Epoll() {
         if (epfd >= 0) close(epfd);
         if (timerfd >= 0) close(timerfd);
+        if (event_external_fd >= 0) close(event_external_fd);
     }
 
     void exec() {
@@ -246,7 +304,7 @@ public:
                 uint32_t evs = events[i].events;
 
                 // close socket
-                if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) { // EPOLLET
+                if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
                     if (fd == sockfd) {
                         socket_closed = true;
                     } else {
@@ -256,16 +314,142 @@ public:
                 }
 
                 if (evs & EPOLLIN) {
+                    if (event_external_fd > 0 && events[i].data.fd == event_external_fd) {
+                        // прочитать все eventfd
+                        uint64_t val;
+                        read(event_external_fd, &val, sizeof(val));
+                        // добавить все pending_socks в epoll
+                        std::lock_guard lock(mtx);
+                        while (!pending_socks.empty()) {
+                            int fd = pending_socks.front(); pending_socks.pop();
+                            add_fd(fd, EPOLLIN | EPOLLRDHUP);
+
+                            // char ip_str[INET_ADDRSTRLEN];
+                            // inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
+                            Stats st;
+                            // st.ip = string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
+                            st.ip = "external (TODO)";
+                            size_clients++;
+                            clients.emplace(fd, std::move(st));
+
+                            // epoll_event ev{};
+                            // ev.events = EPOLLIN;
+                            // ev.data.fd = fd;
+                            // epoll_ctl(event_external_fd, EPOLL_CTL_ADD, fd, &ev);
+                            // ++count_socks;
+                        }
+                    }else
                     if (fd == STDIN_FILENO) handle_stdin();
                     else if (fd == timerfd) handle_timer();
-                    else if (fd == sockfd) handle_socket_data();
+                    else if (sockfd > 0 && fd == sockfd) handle_socket_data();
                     else if (clients.count(fd)) handle_client_data(fd);
                 }
             }
         }
     }
+
+    virtual bool balance_socket(int client_fd, Stats &st){
+        return false;
+    };
+    virtual void show_shared_stats(){
+
+    };
+
+    int count_clients(){
+        return size_clients;
+    }
+    void print_clients_stats(){
+        for (auto& c: clients){
+            std::cout << "\n" << c.second.get_stats();
+        }
+
+    }
+    std::atomic_int count_fd = 0;
+    std::atomic_int size_clients = 0;
+
+    void add_external_socket(int client_fd, Stats &st) {
+        {
+            std::lock_guard lock(mtx);
+            pending_socks.push(client_fd);
+        }
+        uint64_t one = 1;
+        write(event_external_fd, &one, sizeof(one)); // разбудить epoll
+    }
+
+    int event_external_fd = -1; // для пробуждения
+    std::queue<int> pending_socks; // новые сокеты от main
+    std::mutex mtx; // защищает очередь
+
 };
 
+
+
+// only for client?
+// class SubEpoll : public Epoll{
+// public:
+//     SubEpoll(int sock, bool isl) : Epoll(sock, isl, false){
+//     }
+//     bool balance_socket(int main_count_socks, int client_fd, Stats &st){
+//         return false;
+//     }
+// };
+
+#include <thread>
+#include <algorithm>
+// имеет threadpool
+class MainEpoll : public Epoll{
+public:
+    MainEpoll(int sock, bool isl) : Epoll(sock, isl, true){
+        size_t num_workers = 2;
+        for (size_t i = 0; i < num_workers; ++i) {
+            Epoll* subepoll = new Epoll(-1, false, false);
+            subepolls_.emplace_back(subepoll);
+            workers_.emplace_back([subepoll] {
+                subepoll->exec();
+            });
+        }
+    }
+
+    // true отдали, false забирай себе на обработку
+    // это тормозит, но только на 1 listener
+    bool balance_socket(int client_fd, Stats &st){
+        // проверяем
+        Epoll* min_subepoll = *std::min_element (subepolls_.begin(), subepolls_.end(), [](Epoll* a, Epoll* b) {
+            return a->count_clients() < b->count_clients();
+        });
+        if (count_clients() < min_subepoll->count_clients()){
+            // надо добавить в этот и разбудить его
+            add_external_socket(client_fd, st);
+            return false;// тут делаем
+        }
+        min_subepoll->add_external_socket(client_fd, st);
+        return true;
+    }
+
+    void show_shared_stats(){
+
+        int c = 1;
+        int all_clients = count_clients();
+        std::cout << c ++ << "-" << all_clients << ", ";
+        for (auto& e: subepolls_){
+            int cl = e->count_clients();
+            all_clients += cl;
+            std::cout << c ++ << "-" << cl << ", ";
+        }
+        std::cout  << " = " << all_clients << std::endl;
+
+        print_clients_stats();
+        for (auto& e: subepolls_){
+            e->print_clients_stats();
+        }
+
+        std::cout << std::endl;
+    }
+
+private:
+    std::vector<thread> workers_;
+    std::vector<Epoll*> subepolls_;
+};
 
 void listen_mode_epoll(int port)
 {
@@ -274,7 +458,7 @@ void listen_mode_epoll(int port)
 
     std::cout << "Listening on port " << port << "...\n";
 
-    Epoll e(listen_fd, true);
+    MainEpoll e(listen_fd, true);
     e.exec();
 }
 
@@ -284,7 +468,7 @@ void client_mode_epoll(std::string host, int port)
 
     if (sockfd < 0) return;
 
-    Epoll e(sockfd, false);
+    Epoll e(sockfd, false, false);
     e.exec();
 }
 
