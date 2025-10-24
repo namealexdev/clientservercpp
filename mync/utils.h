@@ -1,9 +1,12 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+//для тестов
+#include <netinet/tcp.h>
+
 #include <fcntl.h>
 const int BUFFER = 1 * 1024 * 1024; // 1 MiB // 65KiB 65536
-const int MAX_CONNECTIONS = 3;
+const int MAX_CONNECTIONS = 1000;
 
 #include <cstring>
 #include <iostream>
@@ -105,6 +108,15 @@ int create_socket(bool islisten, const std::string& host, int port)
     address = *(struct sockaddr_in*)res->ai_addr;
     address.sin_port = htons(port);
     freeaddrinfo(res);
+
+#ifdef TCP_NODELAY
+    // для тестов
+    std::cout << "TCP_NODELAY available" << std::endl;
+    int nodelay = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+#else
+    std::cout << "TCP_NODELAY NOT available" << std::endl;
+#endif
 
     if (islisten){
         if (bind(sock, (struct sockaddr*)&address, sizeof(address)) < 0) {

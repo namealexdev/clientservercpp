@@ -33,6 +33,8 @@ int create_timer() {
     return timer_fd;
 }
 
+const size_t BUF_SIZE = 1 * 1024 * 1024; // 1MB
+
 class Epoll {
     int epfd;
     int sockfd;
@@ -40,7 +42,7 @@ class Epoll {
     int timerfd = -1;
     std::unordered_map<int, Stats> clients;
     time_t start_time;
-    char buffer[1000000];// 65536 65Kb 1000000 1Mb
+    char buffer[BUF_SIZE];// 65536 65Kb
     bool stdin_closed = false;
     bool socket_closed = false;
 
@@ -49,7 +51,7 @@ class Epoll {
         if (epfd == -1) throw std::runtime_error("epoll_create1");
 
         add_fd(STDIN_FILENO, EPOLLIN | EPOLLRDHUP);
-        add_fd(sockfd, EPOLLIN | EPOLLRDHUP);
+        add_fd(sockfd, EPOLLIN | EPOLLRDHUP | EPOLLET);
 
         if (is_listen) {
             timerfd = create_timer();
@@ -90,14 +92,31 @@ class Epoll {
     }
 
     void handle_client_data(int fd) {
-        ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
-        if (n > 0) {
-            clients[fd].addBytes(n);
-            if (write_to_stdout(buffer, n) != 0) {
-                throw std::runtime_error("write to stdout");
+        ssize_t n;
+        // n = recv(fd, buffer, sizeof(buffer), 0);
+        // if (n > 0) {
+        //     clients[fd].addBytes(n);
+        //     if (write_to_stdout(buffer, n) != 0) {
+        //         throw std::runtime_error("write to stdout");
+        //     }
+        // } else {
+        //     remove_client(fd);
+        // }
+
+        while ((n = recv(sockfd, buffer, sizeof(buffer), 0)) > 0) {
+            // обработать данные
+            if (n > 0) {
+                if (write_to_stdout(buffer, n) != 0) {
+                    throw std::runtime_error("write to stdout");
+                }
+            } else if (n == 0) {
+                remove_client(fd);
+                break;
+            } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                break;
+            } else {
+                throw std::runtime_error("recv from socket");
             }
-        } else {
-            remove_client(fd);
         }
     }
 
@@ -106,16 +125,34 @@ class Epoll {
             accept_connections();
         } else {
             // handle_client_data
-            ssize_t n = recv(sockfd, buffer, sizeof(buffer), 0);
-            if (n > 0) {
-                if (write_to_stdout(buffer, n) != 0) {
-                    throw std::runtime_error("write to stdout");
+            ssize_t n;
+            // n = recv(sockfd, buffer, sizeof(buffer), 0);
+            // if (n > 0) {
+            //     if (write_to_stdout(buffer, n) != 0) {
+            //         throw std::runtime_error("write to stdout");
+            //     }
+            // } else if (n == 0) {
+            //     socket_closed = true;
+            // } else {
+            //     throw std::runtime_error("recv from socket");
+            // }
+
+            while ((n = recv(sockfd, buffer, sizeof(buffer), 0)) > 0) {
+                // обработать данные
+                if (n > 0) {
+                    if (write_to_stdout(buffer, n) != 0) {
+                        throw std::runtime_error("write to stdout");
+                    }
+                } else if (n == 0) {
+                    socket_closed = true;
+                    break;
+                } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    break;
+                } else {
+                    throw std::runtime_error("recv from socket");
                 }
-            } else if (n == 0) {
-                socket_closed = true;
-            } else {
-                throw std::runtime_error("recv from socket");
             }
+
         }
     }
 
@@ -124,9 +161,14 @@ class Epoll {
             sockaddr_in client_addr{};
             socklen_t addr_len = sizeof(client_addr);
             int client_fd = accept4(sockfd, (sockaddr*)&client_addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+            if (client_fd == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                    break;
+                throw std::runtime_error("accept4");
+            }
 
             // Увеличение буфера отправки
-            const int bufsize = 1000000;
+            const int bufsize = 1 * 1024 * 1024;//BUF_SIZE;
             if (setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0) {
                 perror("setsockopt SO_SNDBUF");
             }
@@ -136,13 +178,7 @@ class Epoll {
                 perror("setsockopt SO_RCVBUF");
             }
 
-            if (client_fd == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK)
-                    break;
-                throw std::runtime_error("accept4");
-            }
-
-            add_fd(client_fd, EPOLLIN | EPOLLRDHUP);
+            add_fd(client_fd, EPOLLIN | EPOLLRDHUP | EPOLLET);
 
             char ip_str[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
@@ -244,6 +280,7 @@ void listen_mode_epoll(int port)
 void client_mode_epoll(std::string host, int port)
 {
     int sockfd = create_socket(false, host, port);
+
     if (sockfd < 0) return;
 
     Epoll e(sockfd, false);
