@@ -8,7 +8,7 @@ using namespace std;
 #include <stdio.h>
 #include <fcntl.h>
 #include "epoll.h"
-#include "io_uring.h"
+// #include "io_uring.h"
 
 void print_usage(const char* program_name) {
     // std::cout << "Usage: " << program_name << "(-l) [host] [port] (host_from)\n"
@@ -78,7 +78,7 @@ int main(int argc, char* argv[])
 
 
     const int COUNT_THREADS = std::thread::hardware_concurrency();//24 100 сокетов /24 ядра = 5 (2+3,5,(еще 22 раза по 5)...)
-    std::cout << COUNT_THREADS << "max threads" << std::endl;
+    std::cout << COUNT_THREADS << " cores" << std::endl;
 
     if (is_listen){
         listen_mode_epoll(port);

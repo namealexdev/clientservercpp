@@ -13,23 +13,29 @@ private:
     static constexpr uint64_t FOUR_GIB_BYTES = 4ULL * 1024 * 1024 * 1024;
 
 public:
+    std::chrono::steady_clock::time_point start_time;
+
+    // для битрейта
     uint64_t total_bytes = 0;
-    uint64_t total_packets = 0;
-    uint64_t interval_bytes = 0;
     uint64_t last_update_bytes = 0;
     std::chrono::steady_clock::time_point last_update_time;
+    // uint64_t total_packets = 0;
+
+    // для определения 4gb
+    uint64_t interval_bytes = 0;
+    std::chrono::steady_clock::time_point last_interval_time;
 
     std::string ip;
     double current_bps = 0.0;
     // double current_pps = 0.0;
 
     Stats() {
-        last_update_time = std::chrono::steady_clock::now();
+        last_update_time = last_interval_time = start_time = std::chrono::steady_clock::now();
     }
 
     void addBytes(size_t bytes) {
         total_bytes += bytes;
-        total_packets += 1;
+        // total_packets += 1;
         interval_bytes += bytes;
     }
 
@@ -51,14 +57,15 @@ public:
     bool checkFourGigabytes(std::string& message) {
         if (interval_bytes >= FOUR_GIB_BYTES) {
             auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration<double>(now - last_update_time).count();
+            auto elapsed = std::chrono::duration<double>(now - last_interval_time).count();
+            last_interval_time = now;
 
             std::ostringstream oss;
-            oss << "\n" << format_duration_since(last_update_time)
+            oss << "\n" << format_duration_since(start_time)
                 << " " << ip << " 4gb " << std::fixed << std::setprecision(2) << elapsed << " s \n";
             message = oss.str();
 
-            // Сбрасываем только интервал, остальная статистика сохраняется
+            // Сбрасываем интервал
             interval_bytes = 0;
             return true;
         }
@@ -67,7 +74,7 @@ public:
 
     std::string get_stats() const {
         std::ostringstream oss;
-        oss << format_duration_since(last_update_time)
+        oss << format_duration_since(start_time)
             << "\t" << ip
             << "\t" << formatValue(current_bps, "bps");
             // << " " << formatValue(current_pps, "pps");
