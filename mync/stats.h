@@ -57,12 +57,13 @@ public:
     bool checkFourGigabytes(std::string& message) {
         if (interval_bytes >= FOUR_GIB_BYTES) {
             auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration<double>(now - last_interval_time).count();
+            // auto elapsed = std::chrono::duration<double>(now - last_interval_time).count();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_interval_time).count();
             last_interval_time = now;
 
             std::ostringstream oss;
             oss << "\n" << format_duration_since(start_time)
-                << " " << ip << " 4gb " << std::fixed << std::setprecision(2) << elapsed << " s \n";
+                << " " << ip << " 4gb " << interval_bytes << " " << std::fixed << std::setprecision(2) << elapsed << " ms \n";
             message = oss.str();
 
             // Сбрасываем интервал

@@ -1,6 +1,7 @@
 #include "utils.h"
+#include <random>
 // return count bytes, 0 - stdin закрыт, -1 error
-ssize_t read_from_stdin(void *buf, size_t maxlen) {
+ssize_t read_from_stdin(char *buf, size_t maxlen) {
     ssize_t n;
     do {
         n = read(STDIN_FILENO, buf, maxlen);

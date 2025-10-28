@@ -17,7 +17,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(mync main.cpp
     stats.h
-    epoll.h epoll.cpp
+    epollserver.h epollserver.cpp
     # io_uring.h
     utils.h
     snowflakeidgen.h

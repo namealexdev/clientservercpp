@@ -35,7 +35,7 @@ public:
         entries[index].occupied = true;
     }
 
-    Value* find(int key) {
+    Value* find(uint64_t key) {
         size_t index = hash(key);
         size_t start = index;
         do {
@@ -56,38 +56,38 @@ private:
         return static_cast<size_t>(key) % entries.size();
     }
 
-    SnowflakeGenerator genuuid_;
+    // SnowflakeGenerator genuuid_;
 };
 
 #include <unordered_map>
 // это локальный буфер, для каждого epoll, тут синхронизация потоков не нужна!
-template<typename Value>
-class socket_um {
-public:
+// template<typename Value>
+// class socket_um {
+// public:
 
-    explicit socket_um(size_t capacity = 100) : entries(capacity) {}
+//     explicit socket_um(size_t capacity = 100) : entries(capacity) {}
 
-    void insert(const Value& val) {
-        connection_counter_++;
-        entries.emplace(key, std::move(val));
-    }
+//     void insert(const Value& val) {
+//         connection_counter_++;
+//         entries.emplace(key, std::move(val));
+//     }
 
-    Value* find(int key) {
-        size_t index = hash(key);
-        size_t start = index;
-        do {
-            if (!entries[index].occupied) return nullptr;
-            if (entries[index].key == key && entries[index].occupied) {
-                return &entries[index].value;
-            }
-            index = (index + 1) % entries.size();
-        } while (index != start);
-        return nullptr;
-    }
+//     Value* find(int key) {
+//         size_t index = hash(key);
+//         size_t start = index;
+//         do {
+//             if (!entries[index].occupied) return nullptr;
+//             if (entries[index].key == key && entries[index].occupied) {
+//                 return &entries[index].value;
+//             }
+//             index = (index + 1) % entries.size();
+//         } while (index != start);
+//         return nullptr;
+//     }
 
-private:
-    uint64_t connection_counter_ = 0;
-    std::unordered_map<uint64_t, Value> entries;
+// private:
+//     uint64_t connection_counter_ = 0;
+//     std::unordered_map<uint64_t, Value> entries;
 
-
+// }
 #endif // SIMPLE_FLAT_MAP_H

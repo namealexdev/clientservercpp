@@ -7,7 +7,7 @@ using namespace std;
 #include <liburing.h>
 #include <stdio.h>
 #include <fcntl.h>
-#include "epoll.h"
+#include "epollserver.h"
 // #include "io_uring.h"
 
 void print_usage(const char* program_name) {
@@ -80,12 +80,20 @@ int main(int argc, char* argv[])
     const int COUNT_THREADS = std::thread::hardware_concurrency();//24 100 сокетов /24 ядра = 5 (2+3,5,(еще 22 раза по 5)...)
     std::cout << COUNT_THREADS << " cores" << std::endl;
 
+    struct sigaction sa;
+    sa.sa_handler = stop_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; // Перезапуск системных вызовов при сигнале
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+
     if (is_listen){
         listen_mode_epoll(port);
     }else{
         client_mode_epoll(host, port);
     }
 
+    std::cout << "Correct end main!" << std::endl;
     // if (is_listen){
     //     listen_mode_iouring(port);
     // }else{
