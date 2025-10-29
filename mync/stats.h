@@ -10,7 +10,8 @@
 
 class Stats {
 private:
-    static constexpr uint64_t FOUR_GIB_BYTES = 4ULL * 1024 * 1024 * 1024;
+    // static constexpr uint64_t FOUR_GiB = 4ULL * 1024 * 1024 * 1024;
+    static constexpr uint64_t FOUR_GB = 4ULL * 1000 * 1000 * 1000;
 
 public:
     std::chrono::steady_clock::time_point start_time;
@@ -55,15 +56,20 @@ public:
     }
 
     bool checkFourGigabytes(std::string& message) {
-        if (interval_bytes >= FOUR_GIB_BYTES) {
+        if (interval_bytes >= FOUR_GB) {
             auto now = std::chrono::steady_clock::now();
-            // auto elapsed = std::chrono::duration<double>(now - last_interval_time).count();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_interval_time).count();
+            auto elapsed = std::chrono::duration<double>(now - last_interval_time).count();
+            // auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_interval_time).count();
             last_interval_time = now;
 
+            double estimated_time_for_4gb = (static_cast<double>(FOUR_GB) * elapsed) / static_cast<double>(interval_bytes);
+
+
             std::ostringstream oss;
-            oss << "\n" << format_duration_since(start_time)
-                << " " << ip << " 4gb " << interval_bytes << " " << std::fixed << std::setprecision(2) << elapsed << " ms \n";
+            oss << "\n" << format_duration_since(start_time) << " " << ip << " "  << std::fixed << std::setprecision(2)
+                << interval_bytes/1e9 << "GB " << elapsed << "s"
+                << " (4gb ~" << estimated_time_for_4gb << "s) "
+                << "\n";
             message = oss.str();
 
             // Сбрасываем интервал

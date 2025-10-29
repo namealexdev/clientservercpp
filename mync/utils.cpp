@@ -93,14 +93,14 @@ int create_socket(bool islisten, const std::string& host, int port)
     address.sin_port = htons(port);
     freeaddrinfo(res);
 
-#ifdef TCP_NODELAY
-    // для тестов
-    std::cout << "TCP_NODELAY available" << std::endl;
-    int nodelay = 1;
-    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
-#else
-    std::cout << "TCP_NODELAY NOT available" << std::endl;
-#endif
+// #ifdef TCP_NODELAY
+//     // для тестов
+//     std::cout << "TCP_NODELAY available" << std::endl;
+//     int nodelay = 1;
+//     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+// #else
+//     std::cout << "TCP_NODELAY NOT available" << std::endl;
+// #endif
 
     if (islisten){
         if (bind(sock, (struct sockaddr*)&address, sizeof(address)) < 0) {

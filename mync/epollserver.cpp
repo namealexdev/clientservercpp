@@ -119,7 +119,7 @@ void Epoll::exec()
                     read(event_external_fd, &val, sizeof(val));
                     // добавить все pending_socks в epoll
                     std::lock_guard lock(mtx_pending_new_socks_);
-                    std::unique_lock lock_clients(mtx_clients);// запись
+                    // std::unique_lock lock_clients(mtx_clients);// запись
                     while (!pending_new_socks_.empty()) {
                         auto data = pending_new_socks_.front(); pending_new_socks_.pop();
                         add_fd(data.first, EPOLLIN | EPOLLRDHUP);
@@ -240,7 +240,7 @@ void Epoll::handle_client_data(int fd) {
         // std::cout << "1handle_client_data " << n << std::endl;
 
         {
-            std::unique_lock lock(mtx_clients); // чтение - Запись? unique_lock
+            // std::unique_lock lock(mtx_clients); // чтение - Запись? unique_lock
             clients[fd].addBytes(n);
         }
         if (write_to_stdout(buffer, SERVER_WRITE_STDOUT?n:0) != 0) {
@@ -360,7 +360,7 @@ void Epoll::handle_timer()
 
     // update stats
     {
-        std::unique_lock lock(mtx_clients); // чтение (запись)
+        // std::unique_lock lock(mtx_clients); // чтение (запись)
         for (auto& [fd, stats] : clients) {
             stats.updateBps();
             std::string stats_msg;
@@ -383,7 +383,7 @@ void Epoll::remove_client(int fd) {
     // count_fd--;
     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr);
     {
-        std::unique_lock lock(mtx_clients);// запись
+        // std::unique_lock lock(mtx_clients);// запись
         clients.erase(fd);
     }
 
@@ -394,7 +394,7 @@ void Epoll::remove_client(int fd) {
 uint64_t Epoll::print_clients_stats()
 {
     uint64_t total_bps = 0;
-    std::shared_lock lock(mtx_clients);// чтение
+    // std::shared_lock lock(mtx_clients);// чтение
     for (auto& c: clients){
         std::cout << "\n" << c.second.get_stats();
         total_bps += c.second.current_bps;
