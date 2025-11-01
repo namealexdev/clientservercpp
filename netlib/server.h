@@ -7,18 +7,18 @@
 struct ServerConfig{
     string host = "0.0.0.0";
     int port = 12345;
-    string filename;// empty = without write
+    // string filename;// empty = without write
 
-    int recv_buffer_size = 1 * 1024 * 1024; // 100 MiB
+    // int recv_buffer_size = 1 * 1024 * 1024; // 100 MiB
     int max_connections = 10;
+
+    // int serialization_ths = 1;
 };
 
 enum class ServerState : uint8_t{
     STOPPED, // default
-    STARTING,
-    RUNNING,
-    STOPPING,
-    ERROR
+    WAITING,
+    ERROR,
 };
 
 class IServer{

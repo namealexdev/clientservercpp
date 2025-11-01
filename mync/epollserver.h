@@ -30,11 +30,15 @@ class Epoll {
     int epfd;
     // -1 - disable
     int sockfd = -1;
+
+    //s
     bool is_listen;
     bool show_timer_stats;
     int timerfd = -1;
 
+    //c
     std::unordered_map<int, Stats> clients;// todo переделать id?
+
     time_t start_time;
 
     char buffer[BUF_SIZE];// 65536 65Kb
@@ -70,13 +74,13 @@ public:
     int count_clients(){
         return size_clients;
     }
-    std::shared_mutex mtx_clients;
+    // std::shared_mutex mtx_clients;
     // return total bps
     uint64_t print_clients_stats();
 
     // очередь для передачи сокетов между потоками
     void push_external_socket(int client_fd, const Stats &st);
-    int event_external_fd = -1; // для пробуждения epoll
+    int wakeup_fd = -1; // для пробуждения epoll
     std::queue<std::pair<int, Stats>> pending_new_socks_; // новые сокеты от MainEpoll
     std::mutex mtx_pending_new_socks_; // защищает очередь
 

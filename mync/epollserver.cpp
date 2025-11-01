@@ -22,7 +22,7 @@ Epoll::~Epoll()
     fullstop();
     // if (epfd >= 0) close(epfd);
     // if (timerfd >= 0) close(timerfd);
-    // if (event_external_fd >= 0) close(event_external_fd);
+    // if (wakeup_fd >= 0) close(wakeup_fd);
 }
 
 void Epoll::fullstop()
@@ -73,9 +73,9 @@ void Epoll::fullstop()
         close(timerfd);
         timerfd = -1;
     }
-    if (event_external_fd >= 0) {
-        close(event_external_fd);
-        event_external_fd = -1;
+    if (wakeup_fd >= 0) {
+        close(wakeup_fd);
+        wakeup_fd = -1;
     }
     stdin_closed = true;
     socket_closed = true;
@@ -86,7 +86,7 @@ void Epoll::exec()
 {
     const int MAX_EVENTS = 4;
     epoll_event events[MAX_EVENTS];
-    const int EPOLL_TIMEOUT = 1000;
+    const int EPOLL_TIMEOUT = 100;
 
     while (!stdin_closed && !socket_closed) {
         if (g_should_stop.load()){
@@ -113,10 +113,10 @@ void Epoll::exec()
             }
 
             if (evs & EPOLLIN) {
-                if (event_external_fd > 0 && events[i].data.fd == event_external_fd) {
+                if (wakeup_fd > 0 && fd == wakeup_fd) {
                     // прочитать все eventfd
                     uint64_t val;
-                    read(event_external_fd, &val, sizeof(val));
+                    read(wakeup_fd, &val, sizeof(val));
                     // добавить все pending_socks в epoll
                     std::lock_guard lock(mtx_pending_new_socks_);
                     // std::unique_lock lock_clients(mtx_clients);// запись
@@ -130,7 +130,7 @@ void Epoll::exec()
                         // epoll_event ev{};
                         // ev.events = EPOLLIN;
                         // ev.data.fd = fd;
-                        // epoll_ctl(event_external_fd, EPOLL_CTL_ADD, fd, &ev);
+                        // epoll_ctl(wakeup_fd, EPOLL_CTL_ADD, fd, &ev);
                         // ++count_socks;
                     }
                 }else
@@ -178,11 +178,11 @@ void Epoll::setup_epoll()
         add_fd(sockfd, EPOLLIN | EPOLLRDHUP );//EPOLLET
     }
 
-    event_external_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    if (event_external_fd == -1) {
+    wakeup_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (wakeup_fd == -1) {
         throw std::runtime_error("eventfd");
     }
-    add_fd(event_external_fd, EPOLLIN);
+    add_fd(wakeup_fd, EPOLLIN);
 
     // only for server and subserver
     if (is_listen || sockfd == -1) {
@@ -204,7 +204,7 @@ bool Epoll::add_fd(int fd, uint32_t events)
     }
 
     // не нужно для статистики
-    // if (!(fd == STDIN_FILENO || event_external_fd)){
+    // if (!(fd == STDIN_FILENO || wakeup_fd)){
     // count_fd++;
     // }
     return true;
@@ -372,9 +372,10 @@ void Epoll::handle_timer()
 
 
     if (show_timer_stats){
-        time_t now = time(nullptr);
-        std::cout << "======== Uptime: " << (now - start_time) << " s\n";
+        std::cout << "========\n";
         show_shared_stats();
+        time_t now = time(nullptr);
+        std::cout << "up: " << (now - start_time) << " s\n";
     }
 
 }
@@ -410,7 +411,7 @@ void Epoll::push_external_socket(int client_fd, const Stats &st) {
         size_clients++;
     }
     uint64_t one = 1;
-    write(event_external_fd, &one, sizeof(one)); // разбудить epoll
+    write(wakeup_fd, &one, sizeof(one)); // разбудить epoll
 }
 
 
