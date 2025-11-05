@@ -1,7 +1,8 @@
 #include <netlib.h>
 
 // __FILE__ __FUNCTION__ __PRETTY_FUNCTION__
-#define d(x) std::cout << x << " " << __FUNCTION__ << " " << __LINE__ << std::endl;
+#define d(x) std::cout << x << " \t(" << __FUNCTION__ << " " << __LINE__ << ")" << std::endl;
+
 
 template <typename FactoryMode, int count_ths = 0>
 void test1_connection_state()
@@ -10,44 +11,57 @@ void test1_connection_state()
     INetworkFactory* factory = new FactoryMode();
 
     ServerConfig srv_conf{
-        .port = 12345,
+        .port = 5202,
         .max_connections = 10,
-
     };
     ClientConfig cli_conf{
         .server_ip = "127.0.0.1",
-        .server_port = 12345,
+        .server_port = 5202,
     };
-    IServer* srv = factory->createServer(srv_conf);
-    IClient* cli = factory->createClient(cli_conf);
-
+    IServer* srv = factory->createServer(std::move(srv_conf));
+    IClient* cli = factory->createClient(std::move(cli_conf));
 
     std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
 
-    srv->start();
+    bool isstart = srv->start();
+    d("server start " << isstart)
+
     cli->setAutoSend(1);
     cli->connect();
-    std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
+    usleep(200);
+
+    std::cout << "[after connect] srv:" << srv->getServerState()
+              << " (" << srv->countClients() << " clis)"
+              << " cli:" << cli->getClientState() << std::endl;
 
     cli->disconnect();
-    std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
+    usleep(200);
+    std::cout << "[after disconnect] srv:" << srv->getServerState()
+              << " (" << srv->countClients() << " clis)"
+              << " cli:" << cli->getClientState() << std::endl;
 
-    IClient* cli2 = factory->createClient(cli_conf);
+    ClientConfig cli_conf2{
+        .server_ip = "127.0.0.1",
+        .server_port = 5202,
+    };
+    IClient* cli2 = factory->createClient(std::move(cli_conf2));
 
     cli2->connect();
     cli->connect();
-    std::cout << "srv:" << srv->getServerState()
+    usleep(200);
+    std::cout << "[2connect] srv:" << srv->getServerState()
               << " cli1:" << cli->getClientState()
               << " cli2:" << cli->getClientState() << std::endl;
 
     srv->stop();
-    std::cout << "srv:" << srv->getServerState()
+    std::cout << "[srv stop] srv:" << srv->getServerState()
               << " cli1:" << cli->getClientState()
               << " cli2:" << cli->getClientState() << std::endl;
     d("END connection state TEST");
 }
 
 // template <typename FactoryMode, int count_ths = 0>
+template <typename FactoryMode, int count_ths = 0>
 void test2_data_exchange_2var()
 {
     // INetworkFactory* factory = new FactoryMode();
@@ -61,20 +75,17 @@ void test2_data_exchange_2var()
     //     .server_ip = "127.0.0.1",
     //     .server_port = 12345,
     // };
-    // IServer* srv = factory->createServer(srv_conf);
-    // IClient* cli = factory->createClient(cli_conf);
+    // IServer* srv = factory->createServer(std::move(srv_conf));
+    // IClient* cli = factory->createClient(std::move(cli_conf));
 
-
-
-    // IClient* cli2 = factory->createClient(cli_conf);
-
-    // cli2->connect();
+    // srv->start();
     // cli->connect();
 
-    // cli2->setAutoSend(0);
     // auto message = generateRandomData(1024);
-    // cli2->send_queue(message.data(), message.size());
-    // cli2->send(message.data(), message.size());
+    // cli->send((char*)message.data(), message.size());
+
+    // srv.on_accept = [](){
+    // };
 }
 
 void test3_handshake()

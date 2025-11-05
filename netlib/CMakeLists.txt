@@ -11,11 +11,12 @@ add_library(netlib SHARED
   server.h server.cpp
   client.h client.cpp
   const.h
-  queue.h
-  threadpool.h
+  # queue.h
   utils.h utils.cpp
   stats.h
-  serialization.h serialization.cpp
+  # serialization.h serialization.cpp
+  epoll.h epoll.cpp
+
 )
 
 target_include_directories(netlib PUBLIC

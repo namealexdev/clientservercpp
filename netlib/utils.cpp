@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <fstream>
 #include <filesystem>
+#include <array>
 
 
 int getRandomNumber(int from, int to) {

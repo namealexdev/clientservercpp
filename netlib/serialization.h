@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <array>
 
 enum class MessageType : uint8_t {
     AUTH_REQUEST = 1,

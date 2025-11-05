@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include "const.h"
+#include "epoll.h"
 #include "stats.h"
 
 struct ServerConfig{
@@ -23,36 +24,42 @@ enum class ServerState : uint8_t{
 
 class IServer{
 public:
-    virtual ~IServer() = default;
+    IServer(ServerConfig&& c) : conf_(std::move(c)) {};
     virtual bool start() = 0; // wait accept
+    virtual void stop() = 0;
+    virtual int countClients() = 0;
 
     ServerConfig conf_;
     string last_error_;
-    int socket_ = 0;
-    ServerState state_ = ServerState::STOPPED;
+    Stats stats_;
 
-    bool create_socket();
     string getServerState();
 
-    Stats stats_;
+protected:
+    ServerState state_ = ServerState::STOPPED;
+    int create_listen_socket();
 };
 
 class SinglethreadServer : public IServer {
 public:
-    SinglethreadServer(ServerConfig &conf){
-        conf_ = std::move(conf);
+    SinglethreadServer(ServerConfig&& conf) : IServer(std::move(conf)){
+
     }
     bool start();
+    void stop();
+    int countClients();
+
+    ServerLightEpoll epoll_;
 
 };
 
-class MultithreadServer : public IServer {
-public:
-    MultithreadServer(ServerConfig &conf){
-        conf_ = std::move(conf);
-    }
-    bool start();
-};
+// class MultithreadServer : public IServer {
+// public:
+//     MultithreadServer(ServerConfig&& conf) : IServer(std::move(conf)){
+//         // conf_ = std::move(conf);
+//     }
+//     bool start();
+// };
 
 
 

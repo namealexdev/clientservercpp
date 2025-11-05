@@ -1,12 +1,12 @@
 #include "client.h"
 #include "serialization.h"
 
-bool IClient::create_socket_connect()
+int IClient::create_socket_connect()
 {
     int sock;
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         last_error_ = "socket failed";
-        return false;
+        return -1;
     }
 
     // setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &conf_.send_buffer_size, sizeof(conf_.send_buffer_size));
@@ -17,12 +17,12 @@ bool IClient::create_socket_connect()
         if (inet_pton(AF_INET, conf_.host.c_str(), &bind_addr.sin_addr) <= 0) {
             last_error_ = "inet_pton bind failed " + conf_.host;
             close(sock);
-            return false;
+            return -1;
         }
         if (bind(sock, (struct sockaddr*)&bind_addr, sizeof(bind_addr)) < 0) {
             last_error_ = "bind failed";
             close(sock);
-            return false;
+            return -1;
         }
     }
 
@@ -32,17 +32,16 @@ bool IClient::create_socket_connect()
     if (inet_pton(AF_INET, conf_.server_ip.c_str(), &serv_addr.sin_addr) <= 0) {
         last_error_ = "inet_pton failed " + conf_.host;
         close(sock);
-        return false;
+        return -1;
     }
 
     if (::connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
         last_error_ = "connection failed";
         close(sock);
-        return false;
+        return -1;
     }
 
-    socket_ = sock;
-    return true;
+    return sock;
 }
 
 string IClient::getClientState()
@@ -59,7 +58,8 @@ string IClient::getClientState()
 
 void SinglethreadClient::connect()
 {
-    if (!create_socket_connect()){
+    auto sock = create_socket_connect();
+    if (sock < 0){
         state_ = ClientState::ERROR;
         return ;
     }
@@ -79,20 +79,21 @@ void SinglethreadClient::connect()
 
 
     state_ = ClientState::WAITING;
+    epoll_.start_handle(sock);
 }
 
 void SinglethreadClient::disconnect()
 {
-    close(socket_); socket_ = -1;
     state_ = ClientState::DISCONNECTED;
+    epoll_.stop();
 }
 
-void MultithreadClient::connect()
-{
+// void MultithreadClient::connect()
+// {
 
-}
+// }
 
-void MultithreadClient::disconnect()
-{
+// void MultithreadClient::disconnect()
+// {
 
-}
+// }
