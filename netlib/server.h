@@ -49,10 +49,11 @@ public:
     bool start();
     void stop();
     int countClients();
+
+private:
     void onEvent(EventType e);
 
     ServerLightEpoll epoll_;
-
 };
 
 // class MultithreadServer : public IServer {

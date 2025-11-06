@@ -48,7 +48,7 @@ public:
     // прокидываем методы в LightEpoll
     virtual void send(char* d, int sz) = 0;
     virtual void queue_add(char* d, int sz) = 0;
-    virtual void queue_send(char* d, int sz) = 0;
+    virtual void queue_send() = 0;
 
     ClientConfig conf_;
     string last_error_;
@@ -67,9 +67,9 @@ public:
     void connect();
     void disconnect();
 
-    void send(char* d, int sz);;
-    void queue_add(char* d, int sz);;
-    void queue_send(char* d, int sz);;
+    void send(char* d, int sz);
+    void queue_add(char* d, int sz);
+    void queue_send();
 
 private:
     ClientLightEpoll epoll_;

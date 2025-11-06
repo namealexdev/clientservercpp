@@ -16,7 +16,6 @@ void IEpoll::remove_fd(int fd)
     epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 }
 
-// template<typename Derived>
 IEpoll::IEpoll(){
     epfd_ = epoll_create1(EPOLL_CLOEXEC);
     if (epfd_ == -1) throw std::runtime_error("epoll_create1");
@@ -109,7 +108,7 @@ void ClientLightEpoll::queue_add(char *d, int sz){
     queue_.push(std::make_pair(d, sz));
 }
 
-void ClientLightEpoll::queue_send(char *d, int sz){
+void ClientLightEpoll::queue_send(){
     while(!queue_.empty()){
         auto el = queue_.front();
         queue_.pop();
@@ -297,4 +296,112 @@ void ServerLightEpoll::handle_accept()
         // }
 
     }
+}
+
+ClientMultithEpoll::ClientMultithEpoll(IClientEventHandler *clh){
+    clientHandler_ = clh;
+    on_event_handlers = [this](int fd, uint32_t evs) {
+        on_epoll_event(fd, evs);
+    };
+}
+
+void ClientMultithEpoll::start_handle(int sock){
+    if (socket_ > 0)
+        throw std::runtime_error("cli wrong use start_handle ");
+    if (!add_fd(sock, EPOLLIN | EPOLLRDHUP)){
+        return;
+    }
+    socket_ = sock;
+    handleth_ = new std::thread([=](){
+        exec();
+    });
+}
+
+void ClientMultithEpoll::stop(){
+    need_stop_ = true;
+    if (handleth_){
+        handleth_->join();
+        delete handleth_;
+        handleth_ = nullptr;
+    }
+    close(socket_);
+    socket_ = -1;
+}
+
+void ClientMultithEpoll::send(char *d, int sz){
+    if (::send(socket_, d, sz, MSG_NOSIGNAL) != sz) {
+        std::cerr << socket_ << " send() failed: " << strerror(errno) << std::endl;
+    }
+}
+
+void ClientMultithEpoll::queue_add(char *d, int sz){
+    std::lock_guard<std::mutex> lock(mtx_queue_);
+    queue_.push(std::make_pair(d, sz));
+}
+
+void ClientMultithEpoll::queue_send(){
+    std::lock_guard<std::mutex> lock(mtx_queue_);
+    while(!queue_.empty()){
+        auto el = queue_.front();
+        queue_.pop();
+        send(el.first, el.second);
+    }
+}
+
+void ClientMultithEpoll::on_epoll_event(int fd, uint32_t evs){
+    if (need_stop_){
+        return;
+    }
+    // close socket
+    if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
+        close(socket_);
+        socket_ = -1;
+        d("close client " << fd);
+        clientHandler_->onEvent(need_reconnect_ ? EventType::Reconnected : EventType::Disconnected);
+        if (need_reconnect_){
+            // reconnect();
+        }
+        // close(socket_);
+        // socket_ = 0;
+        //reconnect?
+        return;
+    }
+
+    // тут один единственный сокет, поэтому без проверок
+    handle_socket_data();
+
+    if (socket_ == -1 && need_reconnect_){
+        // reconnect();
+    }
+}
+
+void ClientMultithEpoll::handle_socket_data(){
+    ssize_t n;
+    // это не SubEpoll, тут не нужна статистика
+    // std::cout << "2handle_socket_data " << n << std::endl;
+    n = recv(socket_, buffer, sizeof(buffer), 0);
+    if (n > 0) {
+        // clientHandler_->onEvent()
+        // if (on_recv_handler)
+        //     on_recv_handler(buffer, n);
+        // if (write_to_stdout(buffer, n) != 0) {
+        //     throw std::runtime_error("write to stdout");
+        // }
+    } else if (n == 0) {
+        close(socket_);
+        socket_ = -1;
+    } else {
+        throw std::runtime_error("recv from socket");
+    }
+}
+
+void ClientMultithEpoll::start_queue(){
+    queue_th_ = new std::thread([&](){
+        while (!need_stop_){
+            if (queue_.empty()){
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+            queue_send();
+        }
+    });
 }

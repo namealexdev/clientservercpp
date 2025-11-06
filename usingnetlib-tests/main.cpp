@@ -89,11 +89,35 @@ void test2_data_exchange_2var()
     // };
 }
 
+template <typename FactoryMode, int count_ths = 0>
 void test3_handshake()
 {
 
-}
+    //cli send clientid
+    d("--START handshake TEST");
+    INetworkFactory* factory = new FactoryMode();
 
+    ServerConfig srv_conf{
+        .port = 5202,
+        .max_connections = 10,
+    };
+    ClientConfig cli_conf{
+        .server_ip = "127.0.0.1",
+        .server_port = 5202,
+    };
+    IServer* srv = factory->createServer(std::move(srv_conf));
+    IClient* cli = factory->createClient(std::move(cli_conf));
+
+    srv->start();
+    cli->connect();
+
+    std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
+
+    string s("i want check");
+    cli->send(s.data(), s.size());
+
+}
+#include <assert.h>
 int main(int argc, char* argv[])
 {
     try {

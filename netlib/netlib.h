@@ -36,10 +36,10 @@ public:
 };
 
 // class MultithreadFactory : public INetworkFactory{
-//     MultithreadServer* createServer(ServerConfig &conf){
+//     MultithreadServer* createServer(ServerConfig&& conf){
 //         return new MultithreadServer(conf);
 //     }
-//     MultithreadClient* createClient(ClientConfig &conf){
+//     MultithreadClient* createClient(ClientConfig&& conf){
 //         return new MultithreadClient(conf);
 //     }
 // };

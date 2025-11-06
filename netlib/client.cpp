@@ -98,7 +98,7 @@ void SinglethreadClient::send(char *d, int sz){epoll_.send(d, sz);}
 
 void SinglethreadClient::queue_add(char *d, int sz){epoll_.queue_add(d, sz);}
 
-void SinglethreadClient::queue_send(char *d, int sz){epoll_.queue_send(d, sz);}
+void SinglethreadClient::queue_send(){epoll_.queue_send();}
 
 void SinglethreadClient::onEvent(EventType e){
 
