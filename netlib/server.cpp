@@ -102,3 +102,31 @@ void SinglethreadServer::onEvent(EventType e){
 // {
 //     //accept in n threads
 // }
+
+MultithreadServer::MultithreadServer(ServerConfig &&conf) : IServer(std::move(conf)), epoll_(this){
+    // conf_ = std::move(conf);
+}
+
+bool MultithreadServer::start(int count_ths){
+    auto sock = create_listen_socket();
+    if (sock < 0){
+        state_ = ServerState::ERROR;
+        return false;
+    }
+
+    state_ = ServerState::WAITING;
+
+    epoll_.start_handle(sock, count_ths);
+    return true;
+}
+
+void MultithreadServer::stop()
+{
+    state_ = ServerState::STOPPED;
+    epoll_.stop();
+}
+
+int MultithreadServer::countClients()
+{
+    return epoll_.countClients();
+}

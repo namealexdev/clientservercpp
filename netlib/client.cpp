@@ -127,3 +127,45 @@ void SinglethreadClient::onEvent(EventType e){
 // {
 
 // }
+
+MultithreadClient::MultithreadClient(ClientConfig &&conf) :
+    IClient(std::move(conf)), epoll_(this){
+    // conf_ = std::move(conf);
+    // loadUuid();
+}
+
+void MultithreadClient::connect(){
+    auto sock = create_socket_connect();
+    if (sock < 0){
+        state_ = ClientState::ERROR;
+        return ;
+    }
+
+
+    state_ = ClientState::HANDSHAKE;
+
+    // if (!auth()){
+    //     close(sock);
+    //     return false;
+    // }
+
+    // TODO: если в очереди есть данные отправляем
+    // if (auto_send_ && !queue.empty()){
+    //     // qsend()
+    // }
+
+
+    state_ = ClientState::WAITING;
+    epoll_.start_handle(sock);
+}
+
+void MultithreadClient::disconnect(){
+    state_ = ClientState::DISCONNECTED;
+    epoll_.stop();
+}
+
+void MultithreadClient::send(char *d, int sz){epoll_.send(d, sz);}
+
+void MultithreadClient::queue_add(char *d, int sz){epoll_.queue_add(d, sz);}
+
+void MultithreadClient::queue_send(){epoll_.queue_send();}

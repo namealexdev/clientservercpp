@@ -77,18 +77,21 @@ private:
     void onEvent(EventType e);
 };
 
-// class MultithreadClient : public IClient {
-// public:
-//     MultithreadClient(ClientConfig&& conf) : IClient(std::move(conf)){
-//         // conf_ = std::move(conf);
-//         // loadUuid();
-//     }
-//     void connect();
-//     void disconnect();
+class MultithreadClient : public IClient, public IClientEventHandler {
+public:
+    MultithreadClient(ClientConfig&& conf);
+    void connect();
+    void disconnect();
 
-// private:
-//     MultiThreadEpoll epoll_;
-// };
+    void send(char *d, int sz);
+
+    void queue_add(char *d, int sz);
+
+    void queue_send();
+
+private:
+    ClientMultithEpoll epoll_;
+};
 
 // struct Handshake{
 //     std::array<uint8_t, 16> uuid_;

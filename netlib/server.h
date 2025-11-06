@@ -56,13 +56,16 @@ private:
     ServerLightEpoll epoll_;
 };
 
-// class MultithreadServer : public IServer {
-// public:
-//     MultithreadServer(ServerConfig&& conf) : IServer(std::move(conf)){
-//         // conf_ = std::move(conf);
-//     }
-//     bool start();
-// };
+class MultithreadServer : public IServer, public IClientEventHandler {
+public:
+    MultithreadServer(ServerConfig&& conf);
+    bool start(int count_ths);;
+    void stop();
+
+    int countClients();
+private:
+    ServerMultithEpoll epoll_;
+};
 
 
 

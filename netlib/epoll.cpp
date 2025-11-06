@@ -405,3 +405,199 @@ void ClientMultithEpoll::start_queue(){
         }
     });
 }
+
+ServerMultithEpoll::ServerMultithEpoll(IClientEventHandler *clh){
+    clientHandler_ = clh;
+    on_event_handlers = [this](int fd, uint32_t evs) {
+        on_epoll_event(fd, evs);
+    };
+}
+
+ServerMultithEpoll::~ServerMultithEpoll() {
+    for (auto& e : subepolls_) {
+        e->stop();
+    }
+    subepolls_.clear();
+}
+
+void ServerMultithEpoll::start_handle(int sock, int count_workers){
+    if (socket_ > 0)
+        throw std::runtime_error("srv wrong use start_handle ");
+    if (sock > 0 && !add_fd(sock, EPOLLIN | EPOLLRDHUP)){
+        return;
+    }
+    socket_ = sock;
+    handleth_ = new std::thread([&](){
+        exec();
+    });
+
+    for (size_t i = 0; i < count_workers; ++i) {
+        auto* subepoll = new ServerSubEpoll();
+        subepoll->start_handle(-1);
+    }
+}
+
+void ServerMultithEpoll::stop(){
+    need_stop_ = true;
+    if (handleth_){
+        handleth_->join();
+        delete handleth_;
+        handleth_ = nullptr;
+    }
+
+    if (socket_ > 0)
+        close(socket_);
+
+}
+
+int ServerMultithEpoll::countClients(){
+    int full = 0;
+    for (auto e: subepolls_){
+        full += e->countClients();
+    }
+    return full;
+}
+
+void ServerMultithEpoll::on_epoll_event(int fd, uint32_t evs){
+    if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
+        if (fd == socket_) {
+            need_stop_ = true;
+            d("need stop server epoll " << socket_)
+        }
+        return;
+    }
+
+    if (evs & EPOLLIN) {
+        // if (socket_ > 0 && fd == socket_)
+        handle_accept();
+    }
+}
+
+void ServerMultithEpoll::handle_accept(){
+    while (true) {
+        sockaddr_in client_addr{};
+        socklen_t addr_len = sizeof(client_addr);
+        int client_fd = accept4(socket_, (sockaddr*)&client_addr, &addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        if (client_fd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+            throw std::runtime_error(std::string("accept4: ") + strerror(errno));
+        }
+
+        char ip_str[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
+        Stats st;
+        st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
+
+        //balance_socket
+        auto* min_subepoll = *std::min_element (subepolls_.begin(), subepolls_.end(), [](auto* a, auto* b) {
+            return a->countClients() < b->countClients();
+        });
+        min_subepoll->push_external_socket(client_fd, st);
+    }
+
+
+}
+
+ServerSubEpoll::ServerSubEpoll(){
+    on_event_handlers = [this](int fd, uint32_t evs) {
+        on_epoll_event(fd, evs);
+    };
+}
+
+void ServerSubEpoll::start_handle(int sock){
+    if (socket_ > 0)
+        throw std::runtime_error("srv wrong use start_handle ");
+    if (sock > 0 && !add_fd(sock, EPOLLIN | EPOLLRDHUP)){
+        return;
+    }
+    socket_ = sock;
+    handleth_ = new std::thread([&](){
+        exec();
+    });
+}
+
+void ServerSubEpoll::stop(){
+    need_stop_ = true;
+    if (handleth_){
+        handleth_->join();
+        delete handleth_;
+        handleth_ = nullptr;
+    }
+
+    if (socket_ > 0)
+        close(socket_);
+
+    d("stop server:" << clients.size())
+        while(!clients.empty()){
+        remove_client(clients.begin()->first);
+    }
+}
+
+int ServerSubEpoll::countClients(){
+    return clients.size();
+}
+
+void ServerSubEpoll::push_external_socket(int client_fd, const Stats &st){
+    {
+        std::lock_guard lock(mtx_pending_new_socks_);
+        pending_new_socks_.push(std::make_pair(client_fd, std::move(st)));
+        // добавляем тут, чтобы балансировка проходила корректно
+        // size_clients++;
+    }
+    // uint64_t one = 1;
+    // write(wakeup_fd, &one, sizeof(one)); // разбудить epoll
+}
+
+void ServerSubEpoll::on_epoll_event(int fd, uint32_t evs){
+    if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
+        if (fd == socket_) {
+            need_stop_ = true;
+            d("need stop server epoll " << socket_)
+        } else {
+            remove_client(fd);
+            std::cout << "server remove client " << fd << std::endl;
+            // clientHandler_->onEvent(EventType::ClientDisconnect);
+        }
+        return;
+    }
+
+    if (evs & EPOLLIN) {
+        // if (socket_ > 0 && fd == socket_) handle_accept();
+        // else if (clients.count(fd)) handle_client_data(fd);
+
+        // тут только клиенты, так что без проверки if (clients.count(fd))
+        handle_client_data(fd);
+    }
+}
+
+void ServerSubEpoll::remove_client(int fd){
+    d("remove_client " << fd)
+        // count_fd--;
+        remove_fd(fd);
+    {
+        // std::unique_lock lock(mtx_clients);// запись
+        clients.erase(fd);
+    }
+
+    // size_clients--;
+    close(fd);
+}
+
+void ServerSubEpoll::handle_client_data(int fd){
+    ssize_t n;
+    n = recv(fd, buffer, sizeof(buffer), 0);
+    if (n > 0) {
+        // std::cout << "1handle_client_data " << n << std::endl;
+
+        {
+            // std::unique_lock lock(mtx_clients); // чтение - Запись? unique_lock
+            clients[fd].addBytes(n);
+        }
+        // if (write_to_stdout(buffer, SERVER_WRITE_STDOUT?n:0) != 0) {
+        //     throw std::runtime_error("write to stdout");
+        // }
+    } else {
+        remove_client(fd);
+    }
+}
