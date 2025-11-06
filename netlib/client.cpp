@@ -56,6 +56,12 @@ string IClient::getClientState()
     }
 }
 
+SinglethreadClient::SinglethreadClient(ClientConfig &&conf) : IClient(std::move(conf)), epoll_(this){
+    // conf_ = std::move(conf);
+    // loadUuid();
+    // epoll_.on_event = onEvent
+}
+
 void SinglethreadClient::connect()
 {
     auto sock = create_socket_connect();
@@ -86,6 +92,30 @@ void SinglethreadClient::disconnect()
 {
     state_ = ClientState::DISCONNECTED;
     epoll_.stop();
+}
+
+void SinglethreadClient::send(char *d, int sz){epoll_.send(d, sz);}
+
+void SinglethreadClient::queue_add(char *d, int sz){epoll_.queue_add(d, sz);}
+
+void SinglethreadClient::queue_send(char *d, int sz){epoll_.queue_send(d, sz);}
+
+void SinglethreadClient::onEvent(EventType e){
+
+    switch(e){
+    case EventType::Disconnected:
+        state_ = ClientState::DISCONNECTED;
+        break;
+    case EventType::Reconnected:
+        state_ = ClientState::RECONNECTED;
+        break;
+    case EventType::Waiting:
+        state_ = ClientState::WAITING;
+        break;
+    default:
+        break;
+    }
+    d("cl onEvent " << (int)e << " state:" << (int)state_)
 }
 
 // void MultithreadClient::connect()

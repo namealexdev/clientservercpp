@@ -40,14 +40,16 @@ protected:
     int create_listen_socket();
 };
 
-class SinglethreadServer : public IServer {
+class SinglethreadServer : public IServer, public IClientEventHandler {
 public:
-    SinglethreadServer(ServerConfig&& conf) : IServer(std::move(conf)){
+    SinglethreadServer(ServerConfig&& conf) :
+        IServer(std::move(conf)), epoll_(this){
 
     }
     bool start();
     void stop();
     int countClients();
+    void onEvent(EventType e);
 
     ServerLightEpoll epoll_;
 

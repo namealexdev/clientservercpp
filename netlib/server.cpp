@@ -86,6 +86,17 @@ int SinglethreadServer::countClients()
     return epoll_.countClients();
 }
 
+void SinglethreadServer::onEvent(EventType e){
+    switch(e){
+    case EventType::ClientDisconnect:
+        d("detect client disconnected");
+        break;
+    default:
+        break;
+    }
+    d("srv onEvent " << (int)e << " state:" << (int)state_)
+}
+
 
 // bool MultithreadServer::start()
 // {

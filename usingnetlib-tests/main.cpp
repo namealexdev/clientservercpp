@@ -26,7 +26,7 @@ void test1_connection_state()
     bool isstart = srv->start();
     d("server start " << isstart)
 
-    cli->setAutoSend(1);
+    // cli->setAutoSend(1);
     cli->connect();
     usleep(200);
 
@@ -54,6 +54,7 @@ void test1_connection_state()
               << " cli2:" << cli->getClientState() << std::endl;
 
     srv->stop();
+    usleep(200);
     std::cout << "[srv stop] srv:" << srv->getServerState()
               << " cli1:" << cli->getClientState()
               << " cli2:" << cli->getClientState() << std::endl;

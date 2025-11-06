@@ -16,14 +16,6 @@ public:
         total_bytes += bytes;
     }
 
-    void update_stats(){
-
-    }
-
-    void get_stats(){
-
-    }
-
     //  скорость за интервал с последнего вызова
     string getBitrate() {
         auto now = std::chrono::steady_clock::now();

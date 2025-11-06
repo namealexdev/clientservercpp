@@ -69,7 +69,8 @@ void IEpoll::exec()
 // Явно инстанцируем шаблон для нужного типа
 // template void IEpoll<LightEpoll>::exec();
 
-ClientLightEpoll::ClientLightEpoll(){
+ClientLightEpoll::ClientLightEpoll(IClientEventHandler* clh) {
+    clientHandler_ = clh;
     on_event_handlers = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
@@ -77,7 +78,7 @@ ClientLightEpoll::ClientLightEpoll(){
 
 void ClientLightEpoll::start_handle(int sock){
     if (socket_ > 0)
-        throw std::runtime_error("wrong use start_handle ");
+        throw std::runtime_error("cli wrong use start_handle ");
     if (!add_fd(sock, EPOLLIN | EPOLLRDHUP)){
         return;
     }
@@ -94,7 +95,8 @@ void ClientLightEpoll::stop(){
         delete handleth_;
         handleth_ = nullptr;
     }
-
+    close(socket_);
+    socket_ = -1;
 }
 
 void ClientLightEpoll::send(char *d, int sz){
@@ -123,6 +125,8 @@ void ClientLightEpoll::on_epoll_event(int fd, uint32_t evs){
     if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
         close(socket_);
         socket_ = -1;
+        d("close client " << fd);
+        clientHandler_->onEvent(need_reconnect_ ? EventType::Reconnected : EventType::Disconnected);
         if (need_reconnect_){
             // reconnect();
         }
@@ -146,8 +150,8 @@ void ClientLightEpoll::handle_socket_data(){
     // std::cout << "2handle_socket_data " << n << std::endl;
     n = recv(socket_, buffer, sizeof(buffer), 0);
     if (n > 0) {
-        if (on_recv_handler)
-            on_recv_handler(buffer, n);
+        // if (on_recv_handler)
+        //     on_recv_handler(buffer, n);
         // if (write_to_stdout(buffer, n) != 0) {
         //     throw std::runtime_error("write to stdout");
         // }
@@ -159,7 +163,8 @@ void ClientLightEpoll::handle_socket_data(){
     }
 }
 
-ServerLightEpoll::ServerLightEpoll(){
+ServerLightEpoll::ServerLightEpoll(IClientEventHandler* clh){
+    clientHandler_ = clh;
     on_event_handlers = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
@@ -171,7 +176,7 @@ int ServerLightEpoll::countClients(){
 
 void ServerLightEpoll::start_handle(int sock){
     if (socket_ > 0)
-        throw std::runtime_error("wrong use start_handle ");
+        throw std::runtime_error("srv wrong use start_handle ");
     if (sock > 0 && !add_fd(sock, EPOLLIN | EPOLLRDHUP)){
         return;
     }
@@ -191,6 +196,8 @@ void ServerLightEpoll::stop(){
 
     if (socket_ > 0)
         close(socket_);
+
+    d("stop server:" << clients.size())
     while(!clients.empty()){
         remove_client(clients.begin()->first);
     }
@@ -200,8 +207,11 @@ void ServerLightEpoll::on_epoll_event(int fd, uint32_t evs){
     if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
         if (fd == socket_) {
             need_stop_ = true;
+            d("need stop server epoll " << socket_)
         } else {
             remove_client(fd);
+            std::cout << "server remove client " << fd << std::endl;
+            clientHandler_->onEvent(EventType::ClientDisconnect);
         }
         return;
     }
@@ -213,6 +223,7 @@ void ServerLightEpoll::on_epoll_event(int fd, uint32_t evs){
 }
 
 void ServerLightEpoll::remove_client(int fd) {
+    d("remove_client " << fd)
     // count_fd--;
     remove_fd(fd);
     {
@@ -279,6 +290,7 @@ void ServerLightEpoll::handle_accept()
         //     }else{
         //         size_clients++;
         clients.emplace(client_fd, std::move(st));
+        d("add_client " << client_fd);
             // std::cout << "Added socket: " << client_fd << " (" << clients[client_fd].ip << ")" << std::endl;
         //     }
 

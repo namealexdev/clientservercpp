@@ -19,4 +19,7 @@ using std::string;
 
 #include "utils.h"
 
+#define d(x) std::cout << x << " \t(" << __FUNCTION__ << " " << __LINE__ << ")" << std::endl;
+
+
 #endif // CONST_H

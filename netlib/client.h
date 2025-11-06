@@ -8,7 +8,8 @@
 struct ClientConfig{
     string host;
     string server_ip = "127.0.0.1";
-    int server_port = 12345;
+    uint16_t server_port = 12345;
+
     // bool auto_reconnect = false;
     // int serialization_ths = 1;
     // int send_buffer_size = 1 * 1024 * 1024; // 1 MiB
@@ -17,6 +18,7 @@ struct ClientConfig{
 
 enum class ClientState : uint8_t{
     DISCONNECTED = 0, // default
+    RECONNECTED,
     HANDSHAKE,
     WAITING,
     SENDING,
@@ -34,7 +36,7 @@ enum class ClientState : uint8_t{
 class IClient {
 public:
     IClient(ClientConfig&& c) : conf_(std::move(c)) {};
-    virtual ~IClient() = default;
+
     virtual void connect() = 0;
     virtual void disconnect() = 0;
 
@@ -44,9 +46,9 @@ public:
     }
 
     // прокидываем методы в LightEpoll
-    void send(char* d, int sz);
-    void queue_add(char* d, int sz);
-    void queue_send(char* d, int sz);
+    virtual void send(char* d, int sz) = 0;
+    virtual void queue_add(char* d, int sz) = 0;
+    virtual void queue_send(char* d, int sz) = 0;
 
     ClientConfig conf_;
     string last_error_;
@@ -54,26 +56,25 @@ public:
     Stats stats_;
 
 protected:
-    // все что касается подключений, epoll
-    // int socket_ = 0;
-
     int create_socket_connect();
     bool auto_send_ = true;
 };
 
 
-class SinglethreadClient : public IClient {
+class SinglethreadClient : public IClient, public IClientEventHandler {
 public:
-    SinglethreadClient(ClientConfig&& conf) : IClient(std::move(conf)){
-        // conf_ = std::move(conf);
-        // loadUuid();
-        // epoll_.on_recv_handler
-    }
+    SinglethreadClient(ClientConfig&& conf);
     void connect();
     void disconnect();
 
-// private:
+    void send(char* d, int sz);;
+    void queue_add(char* d, int sz);;
+    void queue_send(char* d, int sz);;
+
+private:
     ClientLightEpoll epoll_;
+
+    void onEvent(EventType e);
 };
 
 // class MultithreadClient : public IClient {

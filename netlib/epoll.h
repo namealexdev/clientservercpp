@@ -7,6 +7,21 @@
 #include "stats.h"
 
 
+enum class EventType {
+    Disconnected,
+    Reconnected,
+    Waiting,
+
+    ClientDisconnect
+};
+
+
+class IClientEventHandler {
+public:
+    virtual ~IClientEventHandler() = default;
+    virtual void onEvent(EventType e) = 0;
+};
+
 
 // общий простой епол без сокетов
 
@@ -14,6 +29,8 @@ class IEpoll {
 protected:
     IEpoll();
     ~IEpoll();
+
+    IClientEventHandler* clientHandler_ = nullptr;
 
     // template<typename Derived>
     void exec();// блокирует
@@ -32,7 +49,6 @@ private:
 };
 
 // for client
-//
 class ClientLightEpoll : protected IEpoll
 {
 public:
@@ -40,13 +56,14 @@ public:
     // HandlerPtr handler_ptr = &LightEpoll::event_handlers;
     // (this->*handler_ptr)(fd, evs);
 
-    ClientLightEpoll();
+    ClientLightEpoll(IClientEventHandler* clh);
     void start_handle(int sock);
     void stop();
 
     bool need_reconnect_ = false;
-    std::function<void(const char* data, ssize_t size)> on_recv_handler = 0;
+    // std::function<void(const char* data, ssize_t size)> on_recv_handler = 0;
 
+    //ВЫНЕСТИ ЭТО в класс для send recv
     // now in socket
     void send(char* d, int sz);
     // using queue or lockfree queue
@@ -73,7 +90,7 @@ private:
 class ServerLightEpoll : protected IEpoll
 {
 public:
-    ServerLightEpoll();
+    ServerLightEpoll(IClientEventHandler* clh);
 
     void start_handle(int sock);
     void stop();
