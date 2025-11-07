@@ -75,14 +75,14 @@ bool SimpleServer::start(int num_workers){
 
     state_ = ServerState::WAITING;
 
-    epoll_.add_fd(sock, EPOLLIN | EPOLLRDHUP);
+    listen_socket_ = sock;
+    epoll_.add_fd(sock);
     epoll_.start();
     return true;
 }
 
 void SimpleServer::stop(){
-    epoll_.need_stop_ = true;
-    // epoll_.stop();
+    epoll_.stop();
     if (listen_socket_ > 0) {
         close(listen_socket_);
         listen_socket_ = -1;
@@ -93,7 +93,7 @@ int SimpleServer::countClients(){
     return clients_.size();
 }
 
-bool SimpleServer::addClientFd(int fd, const Stats &st){
+void SimpleServer::addClientFd(int fd, const Stats &st){
     std::lock_guard lock(preClient_socks_mtx_);
     preClient_socks_.push(std::make_pair(fd, std::move(st)));
 }
@@ -109,7 +109,7 @@ void SimpleServer::onEpollEvent(int fd, uint32_t events){
     // Обрабатывает события: accept или данные от клиента
     if (events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
         if (fd == listen_socket_) {
-            epoll_.need_stop_ = true;
+            epoll_.stop();
         } else {
             removeClient(fd);
             if (dispatcher_)
@@ -117,7 +117,6 @@ void SimpleServer::onEpollEvent(int fd, uint32_t events){
         }
         return;
     }
-
     if (events & EPOLLIN) {
         if (fd == listen_socket_) {
             handleAccept();
@@ -137,7 +136,7 @@ void SimpleServer::handleAccept(){
             return;
         }
 
-        epoll_.add_fd(client_fd, EPOLLIN | EPOLLRDHUP);
+        epoll_.add_fd(client_fd);
 
         char ip_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
@@ -195,7 +194,7 @@ bool MultithreadServer::start(int num_workers){
         // worker_client_counts_.push_back(0);
     }
 
-    accept_epoll_.add_fd(sock, EPOLLIN | EPOLLRDHUP);
+    accept_epoll_.add_fd(sock);
     accept_epoll_.start();
 
     return true;
@@ -203,8 +202,7 @@ bool MultithreadServer::start(int num_workers){
 
 void MultithreadServer::stop(){
     state_ = ServerState::STOPPED;
-    accept_epoll_.need_stop_ = true;
-    // accept_epoll_.stop();
+    accept_epoll_.stop();
 }
 
 int MultithreadServer::countClients(){

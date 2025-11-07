@@ -49,7 +49,7 @@ public:
     int countClients();
 
     // нужен для передачи сокетов в многопоточном сервере
-    bool addClientFd(int fd, const Stats& st);
+    void addClientFd(int fd, const Stats& st);
 
     void addHandlerEvent(EventType type, std::function<void(void*)> handler);
 
@@ -74,7 +74,7 @@ private:
 
 class MultithreadServer : public IServer{
 public:
-    MultithreadServer(ServerConfig config);
+    explicit MultithreadServer(ServerConfig config);
 
     bool start(int num_workers);
     void stop();
@@ -93,35 +93,5 @@ private:
     std::vector<std::unique_ptr<SimpleServer>> workers_;
     std::vector<int> worker_client_counts_; // для балансировки(чтобы без atomic)
 };
-
-
-// class SinglethreadServer : public IServer, public IClientEventHandler {
-// public:
-//     SinglethreadServer(ServerConfig&& conf) :
-//         IServer(std::move(conf)), epoll_(this){
-
-//     }
-//     bool start();
-//     void stop();
-//     int countClients();
-
-// private:
-//     void onEvent(EventType e);
-
-//     ServerLightEpoll epoll_;
-// };
-
-// class MultithreadServer : public IServer, public IClientEventHandler {
-// public:
-//     MultithreadServer(ServerConfig&& conf);
-//     bool start(int count_ths);
-//     void stop();
-
-//     int countClients();
-// private:
-//     ServerMultithEpoll epoll_;
-// };
-
-
 
 #endif // SERVER_H

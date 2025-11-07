@@ -96,7 +96,8 @@ std::array<uint8_t, 16> generateUuid() {
     return uuid;
 }
 
-bool write_session_uuid(const std::array<uint8_t, 16>& client_session_uuid, const std::string& filename) {
+bool write_session_uuid(const std::array<uint8_t, 16>& client_session_uuid,
+                        const std::string& filename) {
     std::ofstream file(filename, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
         return false;

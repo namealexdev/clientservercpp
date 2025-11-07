@@ -19,7 +19,7 @@ int IClient::create_socket_connect()
             close(sock);
             return -1;
         }
-        if (bind(sock, (struct sockaddr*)&bind_addr, sizeof(bind_addr)) < 0) {
+        if (bind(sock, reinterpret_cast<struct sockaddr*>(&bind_addr), sizeof(bind_addr)) < 0) {
             last_error_ = "bind failed";
             close(sock);
             return -1;
@@ -35,7 +35,7 @@ int IClient::create_socket_connect()
         return -1;
     }
 
-    if (::connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+    if (::connect(sock, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)) < 0) {
         last_error_ = "connection failed";
         close(sock);
         return -1;
@@ -77,19 +77,18 @@ void SimpleClient::connect(){
         return ;
     }
 
-    // TODO: add handshake
+    // TODO(): add handshake
     // state_ = ClientState::HANDSHAKE;
-    // TODO: если в очереди есть данные отправляем
+    // TODO(): если в очереди есть данные отправляем
 
     state_ = ClientState::WAITING;
-    epoll_.add_fd(sock, EPOLLIN | EPOLLRDHUP);
+    epoll_.add_fd(sock);
     epoll_.start();
 }
 
 void SimpleClient::disconnect(){
     state_ = ClientState::DISCONNECTED;
-    epoll_.need_stop_ = true;
-    // epoll_.stop();
+    epoll_.stop();
 }
 
 void SimpleClient::send(char *data, int size){
@@ -134,8 +133,9 @@ void SimpleClient::addHandlerEvent(EventType type, std::function<void (void *)> 
 void SimpleClient::onEpollEvent(int fd, uint32_t events){
     // Обрабатывает события от epoll: отключение, чтение и т.д.
     if (events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
-        if (dispatcher_)
+        if (dispatcher_) {
             dispatcher_->onEvent(EventType::Disconnected);
+        }
         state_ = ClientState::DISCONNECTED;
         close(socket_);
         socket_ = -1;
@@ -153,8 +153,9 @@ void SimpleClient::handleData(){
     // std::cout << "2handle_socket_data " << n << std::endl;
     n = recv(socket_, buffer, sizeof(buffer), 0);
     if (n > 0) {
-        if (dispatcher_)
+        if (dispatcher_) {
             dispatcher_->onEvent(EventType::DataReceived, &n);
+        }
         // clientHandler_->onEvent()
         // if (on_recv_handler)
         //     on_recv_handler(buffer, n);

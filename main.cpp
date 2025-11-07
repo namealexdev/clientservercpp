@@ -1,3 +1,4 @@
+#include <memory>
 #include <netlib.h>
 
 // __FILE__ __FUNCTION__ __PRETTY_FUNCTION__
@@ -8,7 +9,7 @@ template <typename FactoryMode, int count_ths = 0>
 void test1_connection_state()
 {
     d("START connection state TEST");
-    INetworkFactory* factory = new FactoryMode();
+    std::unique_ptr<INetworkFactory> factory = std::make_unique<FactoryMode>();
 
     ServerConfig srv_conf{
         .port = 5202,
@@ -115,7 +116,6 @@ void test3_handshake()
 
     string s("i want check");
     cli->send(s.data(), s.size());
-
 }
 #include <assert.h>
 int main(int argc, char* argv[])

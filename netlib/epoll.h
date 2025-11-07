@@ -46,16 +46,18 @@ public:
     BaseEpoll();
     virtual ~BaseEpoll();
 
-    bool need_stop_ = false;
-
-    bool add_fd(int fd, uint32_t events);
+    bool add_fd(int fd);
     void remove_fd(int fd);
     void start();
     void stop();
 
     // прокидывает все вызовы сюда
     // void (*on_event_handlers)(int fd, uint32_t events) = 0;
-    std::function<void(int fd, uint32_t events)> onEvent = 0;
+
+    // std::function<void(int fd, uint32_t events)> onEvent = 0;
+    void setAcceptHandler();
+    void setOnWriteHandler();
+    void setErrorHandler();
 
 private:
     int epfd_ = -1;
@@ -63,7 +65,8 @@ private:
     static const int EPOLL_TIMEOUT = 100;
 
     void execLoop();// блокирует
-    std::thread* thLoop_ = 0;
+    std::unique_ptr<std::thread> thLoop_ = 0;
+    bool need_stop_ = false;
 };
 
 
