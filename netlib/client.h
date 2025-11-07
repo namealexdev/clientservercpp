@@ -25,6 +25,13 @@ enum class ClientState : uint8_t{
     ERROR,
 };
 
+// struct ConnectionMethods{
+//     virtual void send(char* d, int sz) = 0;
+//     virtual void queue_add(char* d, int sz) = 0;
+//     virtual void queue_send() = 0;
+//     virtual int recv(char** d) = 0;
+//     virtual bool wait_accept() = 0;
+// };
 
 /*
 клиент может быть однопоточным, то есть send делается сразу (без очереди)
@@ -47,11 +54,13 @@ public:
 
     // прокидываем методы в LightEpoll
     virtual void send(char* d, int sz) = 0;
-    virtual void queue_add(char* d, int sz) = 0;
-    virtual void queue_send() = 0;
+    virtual void start_async_queue() = 0;
+    virtual void queueAdd(char* d, int sz) = 0;
+    virtual void queueSend() = 0;
 
     ClientConfig conf_;
     string last_error_;
+    // TODO: может state_ переместить в event dispatcher?
     ClientState state_ = ClientState::DISCONNECTED;
     Stats stats_;
 
@@ -60,38 +69,72 @@ protected:
     bool auto_send_ = true;
 };
 
-
-class SinglethreadClient : public IClient, public IClientEventHandler {
+class SimpleClient : public IClient{
 public:
-    SinglethreadClient(ClientConfig&& conf);
+    SimpleClient(ClientConfig config);
+    ~SimpleClient();
+
     void connect();
     void disconnect();
 
-    void send(char* d, int sz);
-    void queue_add(char* d, int sz);
-    void queue_send();
+    void send(char* data, int size);
+    void queueAdd(char* data, int size);
+    void queueSend();
+    void start_async_queue();
+
+    void addHandlerEvent(EventType type, std::function<void(void*)> handler);
 
 private:
-    ClientLightEpoll epoll_;
+    void onEpollEvent(int fd, uint32_t events);
+    void handleData();
 
-    void onEvent(EventType e);
+    int socket_ = -1;
+    EventDispatcher* dispatcher_ = 0;
+    BaseEpoll epoll_;
+
+    static constexpr size_t BUF_SIZE = 65536;
+    char buffer[BUF_SIZE];
+
+    // WARN: поток и мутекс нужны только для мультипотока
+    // TODO: change to lockfree
+    std::thread* queue_th_;
+    std::mutex queue_mtx_;
+    std::queue<std::pair<char*,int>> queue_;
 };
 
-class MultithreadClient : public IClient, public IClientEventHandler {
-public:
-    MultithreadClient(ClientConfig&& conf);
-    void connect();
-    void disconnect();
 
-    void send(char *d, int sz);
+// class SinglethreadClient : public IClient, public IClientEventHandler {
+// public:
+//     SinglethreadClient(ClientConfig&& conf);
+//     void connect();
+//     void disconnect();
 
-    void queue_add(char *d, int sz);
+//     void send(char* d, int sz);
+//     void queue_add(char* d, int sz);
+//     void queue_send();
 
-    void queue_send();
+// private:
+//     ClientLightEpoll epoll_;
 
-private:
-    ClientMultithEpoll epoll_;
-};
+//     void onEvent(EventType e);
+// };
+
+// class MultithreadClient : public IClient, public IClientEventHandler {
+// public:
+//     MultithreadClient(ClientConfig&& conf);
+//     void connect();
+//     void disconnect();
+
+//     void send(char *d, int sz);
+//     void queue_add(char *d, int sz);
+//     void queue_send();
+
+// private:
+//     ClientMultithEpoll epoll_;
+// };
+
+
+
 
 // struct Handshake{
 //     std::array<uint8_t, 16> uuid_;

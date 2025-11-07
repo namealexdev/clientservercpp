@@ -56,116 +56,116 @@ string IClient::getClientState()
     }
 }
 
-SinglethreadClient::SinglethreadClient(ClientConfig &&conf) : IClient(std::move(conf)), epoll_(this){
-    // conf_ = std::move(conf);
-    // loadUuid();
-    // epoll_.on_event = onEvent
+SimpleClient::SimpleClient(ClientConfig config):
+    IClient(std::move(config)) {
+    epoll_.onEvent = [this](int fd, uint32_t events) { onEpollEvent(fd, events); };
 }
 
-void SinglethreadClient::connect()
+SimpleClient::~SimpleClient()
 {
+    epoll_.stop();
+    if(queue_th_){
+        queue_th_->join();
+        delete queue_th_;
+    }
+}
+
+void SimpleClient::connect(){
     auto sock = create_socket_connect();
     if (sock < 0){
         state_ = ClientState::ERROR;
         return ;
     }
 
-
-    state_ = ClientState::HANDSHAKE;
-
-    // if (!auth()){
-    //     close(sock);
-    //     return false;
-    // }
-
+    // TODO: add handshake
+    // state_ = ClientState::HANDSHAKE;
     // TODO: если в очереди есть данные отправляем
-    // if (auto_send_ && !queue.empty()){
-    //     // qsend()
-    // }
-
 
     state_ = ClientState::WAITING;
-    epoll_.start_handle(sock);
+    epoll_.add_fd(sock, EPOLLIN | EPOLLRDHUP);
+    epoll_.start();
 }
 
-void SinglethreadClient::disconnect()
-{
+void SimpleClient::disconnect(){
     state_ = ClientState::DISCONNECTED;
-    epoll_.stop();
+    epoll_.need_stop_ = true;
+    // epoll_.stop();
 }
 
-void SinglethreadClient::send(char *d, int sz){epoll_.send(d, sz);}
+void SimpleClient::send(char *data, int size){
+    if (::send(socket_, data, size, MSG_NOSIGNAL) != size) {
+        std::cerr << socket_ << " send() failed: " << strerror(errno) << std::endl;
+    }
+}
 
-void SinglethreadClient::queue_add(char *d, int sz){epoll_.queue_add(d, sz);}
+void SimpleClient::queueAdd(char *data, int size){
+    std::lock_guard<std::mutex> lock(queue_mtx_);
+    queue_.push(std::make_pair(data, size));
+}
 
-void SinglethreadClient::queue_send(){epoll_.queue_send();}
+void SimpleClient::queueSend(){
+    std::lock_guard<std::mutex> lock(queue_mtx_);
+    while(!queue_.empty()){
+        auto el = queue_.front();
+        queue_.pop();
+        send(el.first, el.second);
+    }
+}
 
-void SinglethreadClient::onEvent(EventType e){
+void SimpleClient::start_async_queue()
+{
+    queue_th_ = new std::thread([&](){
+        while (socket_ > 0){
+            if (queue_.empty()){
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+            queueSend();
+        }
+    });
+}
 
-    switch(e){
-    case EventType::Disconnected:
+void SimpleClient::addHandlerEvent(EventType type, std::function<void (void *)> handler){
+    if (!dispatcher_){
+        dispatcher_ = new EventDispatcher;
+    }
+    dispatcher_->setHandler(type, std::move(handler));
+}
+
+void SimpleClient::onEpollEvent(int fd, uint32_t events){
+    // Обрабатывает события от epoll: отключение, чтение и т.д.
+    if (events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
+        if (dispatcher_)
+            dispatcher_->onEvent(EventType::Disconnected);
         state_ = ClientState::DISCONNECTED;
-        break;
-    case EventType::Reconnected:
-        state_ = ClientState::RECONNECTED;
-        break;
-    case EventType::Waiting:
-        state_ = ClientState::WAITING;
-        break;
-    default:
-        break;
-    }
-    d("cl onEvent " << (int)e << " state:" << (int)state_)
-}
-
-// void MultithreadClient::connect()
-// {
-
-// }
-
-// void MultithreadClient::disconnect()
-// {
-
-// }
-
-MultithreadClient::MultithreadClient(ClientConfig &&conf) :
-    IClient(std::move(conf)), epoll_(this){
-    // conf_ = std::move(conf);
-    // loadUuid();
-}
-
-void MultithreadClient::connect(){
-    auto sock = create_socket_connect();
-    if (sock < 0){
-        state_ = ClientState::ERROR;
-        return ;
+        close(socket_);
+        socket_ = -1;
+        return;
     }
 
-
-    state_ = ClientState::HANDSHAKE;
-
-    // if (!auth()){
-    //     close(sock);
-    //     return false;
-    // }
-
-    // TODO: если в очереди есть данные отправляем
-    // if (auto_send_ && !queue.empty()){
-    //     // qsend()
-    // }
-
-
-    state_ = ClientState::WAITING;
-    epoll_.start_handle(sock);
+    if (events & EPOLLIN) {
+        handleData();
+    }
 }
 
-void MultithreadClient::disconnect(){
-    state_ = ClientState::DISCONNECTED;
-    epoll_.stop();
+void SimpleClient::handleData(){
+    ssize_t n;
+    // это не SubEpoll, тут не нужна статистика
+    // std::cout << "2handle_socket_data " << n << std::endl;
+    n = recv(socket_, buffer, sizeof(buffer), 0);
+    if (n > 0) {
+        if (dispatcher_)
+            dispatcher_->onEvent(EventType::DataReceived, &n);
+        // clientHandler_->onEvent()
+        // if (on_recv_handler)
+        //     on_recv_handler(buffer, n);
+        // if (write_to_stdout(buffer, n) != 0) {
+        //     throw std::runtime_error("write to stdout");
+        // }
+    } else if (n == 0) {
+        close(socket_);
+        socket_ = -1;
+    } else {
+        throw std::runtime_error("recv from socket");
+    }
 }
 
-void MultithreadClient::send(char *d, int sz){epoll_.send(d, sz);}
-
-void MultithreadClient::queue_add(char *d, int sz){epoll_.queue_add(d, sz);}
-
-void MultithreadClient::queue_send(){epoll_.queue_send();}

@@ -28,6 +28,7 @@ void test1_connection_state()
 
     // cli->setAutoSend(1);
     cli->connect();
+
     usleep(200);
 
     std::cout << "[after connect] srv:" << srv->getServerState()

@@ -1,6 +1,6 @@
 #include "epoll.h"
 
-bool IEpoll::add_fd(int fd, uint32_t events)
+bool BaseEpoll::add_fd(int fd, uint32_t events)
 {
     epoll_event ev{.events = events, .data{.fd = fd}};
     if (epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
@@ -11,27 +11,42 @@ bool IEpoll::add_fd(int fd, uint32_t events)
     return true;
 }
 
-void IEpoll::remove_fd(int fd)
+void BaseEpoll::remove_fd(int fd)
 {
     epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
 }
 
-IEpoll::IEpoll(){
+void BaseEpoll::start(){
+    if (thLoop_){
+        stop();
+    }
+    // if (!thLoop_){
+    thLoop_ = new std::thread([this](){execLoop();});
+}
+
+void BaseEpoll::stop(){
+    if (thLoop_){
+        need_stop_ = true;
+        thLoop_->join();
+        delete thLoop_;
+        thLoop_ = nullptr;
+    }
+}
+
+BaseEpoll::BaseEpoll(){
     epfd_ = epoll_create1(EPOLL_CLOEXEC);
     if (epfd_ == -1) throw std::runtime_error("epoll_create1");
 }
 
-IEpoll::~IEpoll(){
+BaseEpoll::~BaseEpoll(){
     if (epfd_ >= 0) {
         close(epfd_);
     }
 }
 
-void IEpoll::exec()
+void BaseEpoll::execLoop()
 {
-    const int MAX_EVENTS = 4;
-    epoll_event events[MAX_EVENTS];
-    const int EPOLL_TIMEOUT = 100;
+    static epoll_event events[MAX_EVENTS];
 
     while (!need_stop_) {
         int nfds = epoll_wait(epfd_, events, MAX_EVENTS, EPOLL_TIMEOUT);
@@ -41,36 +56,18 @@ void IEpoll::exec()
         }
 
         for (int i = 0; i < nfds; ++i) {
-            // int fd = events[i].data.fd;
-            // uint32_t evs = events[i].events;
-
-            if (on_event_handlers){
-                on_event_handlers(events[i].data.fd, events[i].events);
+            if (onEvent){
+                onEvent(events[i].data.fd, events[i].events);
             }
-            // static_cast<Derived*>(this)->on_event(events[i].data.fd, events[i].events);
-            // close socket
-            // if (evs & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
-            //     if (fd == sockfd) {
-            //         socket_closed = true;
-            //     } else {
-            //         // remove_client(fd);
-            //     }
-            //     event_close(fd);
-            //     continue;
-            // }
-
-            // if (evs & EPOLLIN) {
-            //     event_handlers(fd);
-            // }
         }
     }
 }
 // Явно инстанцируем шаблон для нужного типа
-// template void IEpoll<LightEpoll>::exec();
-
+// template void BaseEpoll<LightEpoll>::exec();
+/*
 ClientLightEpoll::ClientLightEpoll(IClientEventHandler* clh) {
     clientHandler_ = clh;
-    on_event_handlers = [this](int fd, uint32_t evs) {
+    onEvent = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
 }
@@ -164,7 +161,7 @@ void ClientLightEpoll::handle_socket_data(){
 
 ServerLightEpoll::ServerLightEpoll(IClientEventHandler* clh){
     clientHandler_ = clh;
-    on_event_handlers = [this](int fd, uint32_t evs) {
+    onEvent = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
 }
@@ -300,7 +297,7 @@ void ServerLightEpoll::handle_accept()
 
 ClientMultithEpoll::ClientMultithEpoll(IClientEventHandler *clh){
     clientHandler_ = clh;
-    on_event_handlers = [this](int fd, uint32_t evs) {
+    onEvent = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
 }
@@ -408,7 +405,7 @@ void ClientMultithEpoll::start_queue(){
 
 ServerMultithEpoll::ServerMultithEpoll(IClientEventHandler *clh){
     clientHandler_ = clh;
-    on_event_handlers = [this](int fd, uint32_t evs) {
+    onEvent = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
 }
@@ -500,7 +497,7 @@ void ServerMultithEpoll::handle_accept(){
 }
 
 ServerSubEpoll::ServerSubEpoll(){
-    on_event_handlers = [this](int fd, uint32_t evs) {
+    onEvent = [this](int fd, uint32_t evs) {
         on_epoll_event(fd, evs);
     };
 }
@@ -601,3 +598,4 @@ void ServerSubEpoll::handle_client_data(int fd){
         remove_client(fd);
     }
 }
+*/

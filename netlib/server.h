@@ -25,7 +25,7 @@ enum class ServerState : uint8_t{
 class IServer{
 public:
     IServer(ServerConfig&& c) : conf_(std::move(c)) {};
-    virtual bool start() = 0; // wait accept
+    virtual bool start(int num_workers = 0) = 0; // wait accept
     virtual void stop() = 0;
     virtual int countClients() = 0;
 
@@ -40,32 +40,87 @@ protected:
     int create_listen_socket();
 };
 
-class SinglethreadServer : public IServer, public IClientEventHandler {
-public:
-    SinglethreadServer(ServerConfig&& conf) :
-        IServer(std::move(conf)), epoll_(this){
 
-    }
-    bool start();
+class SimpleServer : public IServer{
+public:
+    SimpleServer(ServerConfig config, EventDispatcher* e = nullptr);
+    bool start(int num_workers = 0);
     void stop();
     int countClients();
 
-private:
-    void onEvent(EventType e);
+    // нужен для передачи сокетов в многопоточном сервере
+    bool addClientFd(int fd, const Stats& st);
 
-    ServerLightEpoll epoll_;
+    void addHandlerEvent(EventType type, std::function<void(void*)> handler);
+
+private:
+    void onEpollEvent(int fd, uint32_t events);
+    void handleAccept(); // принимает клиентов
+    void handleClientData(int fd); // обрабатывает данные от клиента
+    void removeClient(int fd); // удаляет клиента из epoll и списка
+
+    int listen_socket_ = -1;
+    EventDispatcher* dispatcher_ = 0;
+    BaseEpoll epoll_;
+    static constexpr size_t BUF_SIZE = 65536;
+    char buffer[BUF_SIZE];
+
+    std::unordered_map<int, Stats> clients_;
+
+    // WARN: нужно только для мультипотока
+    std::queue<std::pair<int, Stats>> preClient_socks_;
+    std::mutex preClient_socks_mtx_;
 };
 
-class MultithreadServer : public IServer, public IClientEventHandler {
+class MultithreadServer : public IServer{
 public:
-    MultithreadServer(ServerConfig&& conf);
-    bool start(int count_ths);;
-    void stop();
+    MultithreadServer(ServerConfig config);
 
+    bool start(int num_workers);
+    void stop();
     int countClients();
+
+    void addHandlerEvent(EventType type, std::function<void(void*)> handler);
+
 private:
-    ServerMultithEpoll epoll_;
+    void onEpollEvent(int fd, uint32_t events); // только для accept
+    void handleAccept(); // распределяет сокеты по воркерам
+
+    int listen_socket_ = -1;
+    EventDispatcher* dispatcher_ = 0;
+    BaseEpoll accept_epoll_; // только для accept
+
+    std::vector<std::unique_ptr<SimpleServer>> workers_;
+    std::vector<int> worker_client_counts_; // для балансировки(чтобы без atomic)
 };
+
+
+// class SinglethreadServer : public IServer, public IClientEventHandler {
+// public:
+//     SinglethreadServer(ServerConfig&& conf) :
+//         IServer(std::move(conf)), epoll_(this){
+
+//     }
+//     bool start();
+//     void stop();
+//     int countClients();
+
+// private:
+//     void onEvent(EventType e);
+
+//     ServerLightEpoll epoll_;
+// };
+
+// class MultithreadServer : public IServer, public IClientEventHandler {
+// public:
+//     MultithreadServer(ServerConfig&& conf);
+//     bool start(int count_ths);
+//     void stop();
+
+//     int countClients();
+// private:
+//     ServerMultithEpoll epoll_;
+// };
 
 
 

@@ -16,8 +16,8 @@
 // factory
 class INetworkFactory{
 public:
-    virtual IServer* createServer(ServerConfig&& conf) = 0;
-    virtual IClient* createClient(ClientConfig&& conf) = 0;
+    virtual IServer* createServer(ServerConfig conf) = 0;
+    virtual IClient* createClient(ClientConfig conf) = 0;
 
 };
 
@@ -26,23 +26,23 @@ public:
     // SinglethreadServer* createServer(ServerConfig&& conf);
     // SinglethreadClient* createClient(ClientConfig&& conf);
 
-    SinglethreadServer* createServer(ServerConfig&& conf){
-        return new SinglethreadServer(std::move(conf));
+    IServer* createServer(ServerConfig conf){
+        return new SimpleServer(std::move(conf));
     }
-    SinglethreadClient* createClient(ClientConfig&& conf){
-        return new SinglethreadClient(std::move(conf));
+    IClient* createClient(ClientConfig conf){
+        return new SimpleClient(std::move(conf));
     }
 
 };
 
-// class MultithreadFactory : public INetworkFactory{
-//     MultithreadServer* createServer(ServerConfig&& conf){
-//         return new MultithreadServer(conf);
-//     }
-//     MultithreadClient* createClient(ClientConfig&& conf){
-//         return new MultithreadClient(conf);
-//     }
-// };
+class MultithreadFactory : public INetworkFactory{
+    IServer* createServer(ServerConfig conf){
+        return new MultithreadServer(std::move(conf));
+    }
+    IClient* createClient(ClientConfig conf){
+        return new SimpleClient(std::move(conf));
+    }
+};
 
 
 
