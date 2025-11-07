@@ -13,6 +13,8 @@
 // class SinglethreadServer;
 // class SinglethreadClient;
 
+//todo to uniqptr
+
 // factory
 class INetworkFactory{
 public:
@@ -40,7 +42,9 @@ class MultithreadFactory : public INetworkFactory{
         return new MultithreadServer(std::move(conf));
     }
     IClient* createClient(ClientConfig conf){
-        return new SimpleClient(std::move(conf));
+        auto* cli = new SimpleClient(std::move(conf));
+        cli->start_async_queue();
+        return cli;
     }
 };
 

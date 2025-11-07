@@ -19,7 +19,7 @@ void test1_connection_state()
         .server_port = 5202,
     };
     IServer* srv = factory->createServer(std::move(srv_conf));
-    IClient* cli = factory->createClient(std::move(cli_conf));
+    IClient* cli = factory->createClient(cli_conf);
 
     std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
 
@@ -28,7 +28,6 @@ void test1_connection_state()
 
     // cli->setAutoSend(1);
     cli->connect();
-
     usleep(200);
 
     std::cout << "[after connect] srv:" << srv->getServerState()
@@ -41,11 +40,11 @@ void test1_connection_state()
               << " (" << srv->countClients() << " clis)"
               << " cli:" << cli->getClientState() << std::endl;
 
-    ClientConfig cli_conf2{
-        .server_ip = "127.0.0.1",
-        .server_port = 5202,
-    };
-    IClient* cli2 = factory->createClient(std::move(cli_conf2));
+    // ClientConfig cli_conf2{
+    //     .server_ip = "127.0.0.1",
+    //     .server_port = 5202,
+    // };
+    IClient* cli2 = factory->createClient(cli_conf);
 
     cli2->connect();
     cli->connect();
