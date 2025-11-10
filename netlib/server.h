@@ -29,6 +29,13 @@ struct ClientBuffer {
 };
 
 struct ClientData{
+    // только для handshake?
+    enum ClientState {
+        HANDSHAKE,
+        DATA
+    } state;
+    std::array<uint8_t, 16> client_uuid;
+
     ClientBuffer buf;
     Stats stats;
 };

@@ -37,6 +37,50 @@ private:
     std::unordered_map<EventType, std::function<void(void*)>> handlers_;
 };
 
+#pragma pack(push, 1)
+// ждем от клиента 20 байт
+struct ClientHiMsg{
+    std::array<uint8_t, 16> uuid;
+};
+// ждем от сервера ответ 24 байта
+struct ServerAnsHiMsg{
+    // подтверждение что точно наш сервер
+    std::array<uint8_t, 16> client_uuid;
+    // что клиенту делать дальше
+    enum ClientMode{
+        ERRUUID,
+        SEND
+    } client_mode;
+};
+#pragma pack(pop)
+/*
+ * клиент отправляет uuid
+ * ждем тип (что клиенту делать)
+ * надо ли отправлять типа ok? если я пишу и клиента и сервер
+ */
+// struct Handshake{
+//     Handshake(){
+//         loadUuid();
+//     }
+//     ~Handshake(){
+//         saveUuid();
+//     }
+//     std::array<uint8_t, 16> uuid_;
+
+//     void loadUuid(){
+//         uuid_ = generateUuid();
+//         // save datetime?
+//         // load and save client session uuid
+//         // if (!read_session_uuid("client_session_uuid", uuid_)){
+//         //     uuid_ = generateUuid();
+//         //     saveUuid();
+//         // }
+//     }
+//     void saveUuid(){
+//         // write_session_uuid(uuid_, "client_session_uuid");
+//     }
+// };
+
 // общий простой епол без сокетов - прокидывает события
 class BaseEpoll {
 public:

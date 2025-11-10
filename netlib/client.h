@@ -66,6 +66,8 @@ public:
     ClientState state_ = ClientState::DISCONNECTED;
     Stats stats_;// считаем отправку
 
+    std::array<uint8_t, 16> uuid_;
+
 protected:
     int create_socket_connect();
     bool auto_send_ = true;

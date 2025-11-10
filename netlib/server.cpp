@@ -143,10 +143,7 @@ void SimpleServer::handleAccept(){
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
         clients_[client_fd].stats = std::move(st);
-
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::ClientConnect);
-        }
+        clients_[client_fd].state = ClientData::HANDSHAKE;
     }
 }
 
@@ -163,7 +160,7 @@ void SimpleServer::handleClientData(int fd){
             ssize_t n = recv(fd, buf.header.bytes + buf.header_read,
                              sizeof(buf.header) - buf.header_read, MSG_DONTWAIT);
             if (n < 0) {
-                if (errno == EAGAIN) return; // Данных больше нет — нормально
+                if (errno == EAGAIN) return;
                 // handle_error(fd, n);
                 return;
             }
@@ -207,10 +204,26 @@ void SimpleServer::handleClientData(int fd){
         // --- Пакет полностью прочитан ---
         d("pkt full recv: " << buf.payload_size << " bytes from fd " << fd);
         if (dispatcher_) {
+            // TODO(): можно ли тут без if?
+            if (clients_[fd].state == ClientData::HANDSHAKE){
+                ClientHiMsg* pmsg = reinterpret_cast<ClientHiMsg*>(buf.payload.data());
+                clients_[fd].client_uuid = pmsg->uuid;
+                // TODO(): error
+
+                // TODO нормальная десерелизация!!!
+                // TODO(): без size???
+                // restore if needed and need send to socket answer
+                ServerAnsHiMsg smsg;
+                smsg.client_mode = ServerAnsHiMsg::SEND;
+                smsg.client_uuid = pmsg->uuid;
+                send(fd, &smsg, sizeof(smsg), MSG_DONTWAIT);
+            }
             DataReceived d;
             d.data = buf.payload.data();
             d.size = buf.payload.size();
             dispatcher_->onEvent(EventType::DataReceived, &d);
+
+
         }
 
         buf.reset(); // Готовимся к следующему пакету

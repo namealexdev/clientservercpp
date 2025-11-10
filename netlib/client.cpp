@@ -90,14 +90,31 @@ void SimpleClient::Connect(){
         return ;
     }
 
-    // TODO(): add handshake
-    // state_ = ClientState::HANDSHAKE;
-    // TODO(): если в очереди есть данные отправляем
-
     socket_ = sock;
-    state_ = ClientState::WAITING;
+    // state_ = ClientState::WAITING;
     epoll_.AddFd(sock);
     epoll_.RunEpoll();
+
+
+    state_ = ClientState::HANDSHAKE;
+
+    // отправляем сразу!
+    // TODO(): load uuid
+    uuid_ = generateUuid();
+    ClientHiMsg msg;
+    msg.uuid = uuid_;
+    SendToSocket(reinterpret_cast<char*>(&msg), sizeof(msg));
+
+    // надо ли ждать сразу?
+    ServerAnsHiMsg smsg;
+    int size = sizeof(smsg);
+    Recv(smsg);
+
+    if (smsg.client_mode == ServerAnsHiMsg::ClientMode::SEND){
+        state_ = ClientState::WAITING;
+        return;
+    }
+    state_ = ClientState::ERROR;
 }
 
 void SimpleClient::Disconnect(){
