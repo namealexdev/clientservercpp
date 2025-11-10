@@ -5,6 +5,35 @@
 #include "epoll.h"
 #include "stats.h"
 
+
+struct ClientBuffer {
+    // Заголовок: 4 байта размера в сетевом порядке
+    union {
+        uint32_t net_value; // Используем после полного чтения
+        char bytes[4];      // Читаем по байтам
+    } header;
+    uint8_t header_read = 0; // Прогресс чтения заголовка [0..4]
+
+    // Данные пакета
+    uint32_t payload_size = 0; // Размер в хостовом порядке
+    std::vector<char> payload;   // Буфер (переиспользуется)
+    uint32_t payload_read = 0;   // Прогресс чтения данных
+
+    // Подготовка к следующему пакету (быстро, без освобождения памяти)
+    void reset() {
+        header_read = 0;
+        payload_size = 0;
+        payload_read = 0;
+        payload.resize(0); // Только изменяет size, capacity остаётся
+    }
+};
+
+struct ClientData{
+    ClientBuffer buf;
+    Stats stats;
+};
+
+
 struct ServerConfig{
     string host = "0.0.0.0";
     int port = 12345;
@@ -64,7 +93,7 @@ private:
     BaseEpoll epoll_;
     char buffer[BUF_SIZE];
 
-    std::unordered_map<int, Stats> clients_;
+    std::unordered_map<int, ClientData> clients_;
 
     // WARN: нужно только для мультипотока
     std::queue<std::pair<int, Stats>> preClient_socks_;

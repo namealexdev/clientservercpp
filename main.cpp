@@ -36,22 +36,24 @@ void test1_connection_state()
 
     // cli->setAutoSend(1);
     cli->Connect();
-    usleep(200);
-
-    string message = "some data";
+    usleep(2*1000);
 
     std::cout << "[after connect] srv:" << srv->GetServerState()
               << " (" << srv->CountClients() << " clis)"
               << " cli:" << cli->GetClientState() << std::endl;
 
-
+    string message = "some data";
     cli->SendToSocket(message.data(), message.size());
+    usleep(2*1e6);
 
-    cli->Disconnect();
-    usleep(200);
-    std::cout << "[after disconnect] srv:" << srv->GetServerState()
-              << " (" << srv->CountClients() << " clis)"
-              << " cli:" << cli->GetClientState() << std::endl;
+    // cli->Disconnect();
+    // while(1){
+    //     usleep(1'000'000);
+    //     std::cout << "[after disconnect] srv:" << srv->GetServerState()
+    //               << " (" << srv->CountClients() << " clis)"
+    //               << " cli:" << cli->GetClientState() << std::endl;
+    // }
+
 
     // ClientConfig cli_conf2{
     //     .server_ip = "127.0.0.1",
@@ -61,16 +63,16 @@ void test1_connection_state()
 
     cli2->Connect();
     cli->Connect();
-    usleep(200);
+    usleep(2*1000);
     std::cout << "[2connect] srv:" << srv->GetServerState()
               << " cli1:" << cli->GetClientState()
               << " cli2:" << cli->GetClientState() << std::endl;
 
-    // srv->Stop();
+    srv->Stop();
 
-    cli->SendToSocket(message.data(), message.size());
+    // cli->SendToSocket(message.data(), message.size());
 
-    usleep(200);
+    usleep(2*1000);
     std::cout << "[srv stop] srv:" << srv->GetServerState()
               << " cli1:" << cli->GetClientState()
               << " cli2:" << cli->GetClientState() << std::endl;

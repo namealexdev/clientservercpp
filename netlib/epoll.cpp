@@ -58,6 +58,8 @@ void BaseEpoll::ExecLoop()
             auto fd = events[i].data.fd;
             auto ev = events[i].events;
 
+            d(fd << " " << ev)
+
             switch (ev & (EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
 
             // Разрыв соединения

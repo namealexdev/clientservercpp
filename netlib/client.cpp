@@ -107,10 +107,25 @@ void SimpleClient::Disconnect(){
     epoll_.StopEpoll();
 }
 
-void SimpleClient::SendToSocket(char *data, int size){
-    if (::send(socket_, data, size, MSG_NOSIGNAL) != size) {
-        std::cerr << socket_ << " send() failed: " << strerror(errno) << std::endl;
+void SimpleClient::SendToSocket(char *data, uint32_t size){
+
+    uint32_t net_size = htonl(static_cast<uint32_t>(size));
+
+    iovec iov[2];
+    iov[0].iov_base = &net_size;
+    iov[0].iov_len = sizeof(net_size);
+    iov[1].iov_base = data;
+    iov[1].iov_len = size;
+
+    msghdr msg = {};
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 2;
+
+    ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL);
+    if (sent != size+sizeof(size)) {
+        std::cerr << socket_ << " send(" << sent << ") failed: " << strerror(errno) << std::endl;
     }
+    stats_.addBytes(sent);
 }
 
 void SimpleClient::QueueAdd(char *data, int size){
@@ -146,6 +161,7 @@ void SimpleClient::AddHandlerEvent(EventType type, std::function<void (void *)> 
     dispatcher_->setHandler(type, std::move(handler));
 }
 
+// ответы от сервера (пока нету)
 void SimpleClient::handleData(){
     ssize_t n;
     // это не SubEpoll, тут не нужна статистика

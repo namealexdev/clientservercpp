@@ -65,6 +65,7 @@ SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     IServer(std::move(config)), dispatcher_(e){
 
     epoll_.SetOnReadAcceptHandler([this](int fd) {
+        d("  handle accept recv ")
         if (fd == listen_socket_) {
             handleAccept();
         } else {
@@ -102,11 +103,10 @@ bool SimpleServer::Start(int num_workers){
 }
 
 void SimpleServer::Stop(){
+    state_ = ServerState::STOPPED;
+    epoll_.RemoveFd(listen_socket_);
     epoll_.StopEpoll();
-    if (listen_socket_ > 0) {
-        close(listen_socket_);
-        listen_socket_ = -1;
-    }
+    listen_socket_ = -1;
 }
 
 int SimpleServer::CountClients(){
@@ -142,7 +142,7 @@ void SimpleServer::handleAccept(){
         Stats st;
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
-        clients_[client_fd] = std::move(st);
+        clients_[client_fd].stats = std::move(st);
 
         if (dispatcher_) {
             dispatcher_->onEvent(EventType::ClientConnect);
@@ -151,18 +151,90 @@ void SimpleServer::handleAccept(){
 }
 
 void SimpleServer::handleClientData(int fd){
-    ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
-    if (n > 0) {
-        clients_[fd].addBytes(n);
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::DataReceived, &n);}
+    // читаем size message
+    ClientBuffer &buf = clients_[fd].buf; // Состояние клиента
 
-    } else {
-        removeClient(fd);
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::ClientDisconnect);
+    d("srv get handle data")
+
+    // Пытаемся обработать ВСЕ доступные пакеты за один вызов
+    while (true) {
+        // --- Этап 1: Чтение 4-байтового заголовка ---
+        if (buf.header_read < sizeof(buf.header)) {
+            ssize_t n = recv(fd, buf.header.bytes + buf.header_read,
+                             sizeof(buf.header) - buf.header_read, MSG_DONTWAIT);
+            if (n < 0) {
+                if (errno == EAGAIN) return; // Данных больше нет — нормально
+                // handle_error(fd, n);
+                return;
+            }
+            if (n == 0) {
+                // handle_error(fd, n);
+                return;
+            }
+            buf.header_read += n;
+
+            if (buf.header_read < sizeof(buf.header)) return; // Ждём ещё
+
+            buf.payload_size = ntohl(buf.header.net_value); // Парсим размер
+
+            // ВАЛИДАЦИЯ
+            if (buf.payload_size == 0 /*|| buf.payload_size > MAX_PACKET_SIZE*/) {
+                std::cerr << "Invalid packet size: " << buf.payload_size << " from fd " << fd << std::endl;
+                removeClient(fd);
+                return;
+            }
+            buf.payload.resize(buf.payload_size); // Выделяем/переиспользуем память
         }
+
+        // --- Этап 2: Чтение данных пакета ---
+        if (buf.payload_read < buf.payload_size) {
+            ssize_t n = recv(fd, buf.payload.data() + buf.payload_read,
+                             buf.payload_size - buf.payload_read, MSG_DONTWAIT);
+            if (n < 0) {
+                if (errno == EAGAIN) return; // Данных больше нет — нормально
+                // handle_error(fd, n);
+                return;
+            }
+            if (n == 0) {
+                // handle_error(fd, n);
+                return;
+            }
+            buf.payload_read += n;
+
+            if (buf.payload_read < buf.payload_size) return; // Ждём ещё
+        }
+
+        // --- Пакет полностью прочитан ---
+        d("pkt full recv: " << buf.payload_size << " bytes from fd " << fd);
+        if (dispatcher_) {
+            DataReceived d;
+            d.data = buf.payload.data();
+            d.size = buf.payload.size();
+            dispatcher_->onEvent(EventType::DataReceived, &d);
+        }
+
+        buf.reset(); // Готовимся к следующему пакету
     }
+
+
+    // пытаемся прочитать size? чтобы узнать размер пакета
+    // clients_[fd].stats.addBytes(size);
+
+    // ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
+    // if (n > 0) {
+
+
+    //     d("pkt full recv: " << n << " bytes");
+    //     if (dispatcher_) {
+    //         dispatcher_->onEvent(EventType::DataReceived, &n);
+    //     }
+
+    // } else {
+    //     removeClient(fd);
+    //     if (dispatcher_) {
+    //         dispatcher_->onEvent(EventType::ClientDisconnect);
+    //     }
+    // }
 }
 
 void SimpleServer::removeClient(int fd){
@@ -206,6 +278,7 @@ bool MultithreadServer::Start(int num_workers){
         // worker_client_counts_.push_back(0);
     }
 
+    listen_socket_ = sock;
     accept_epoll_.AddFd(sock);
     accept_epoll_.RunEpoll();
 
@@ -214,6 +287,7 @@ bool MultithreadServer::Start(int num_workers){
 
 void MultithreadServer::Stop(){
     state_ = ServerState::STOPPED;
+    accept_epoll_.RemoveFd(listen_socket_);
     accept_epoll_.StopEpoll();
 }
 

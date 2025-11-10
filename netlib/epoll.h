@@ -15,6 +15,10 @@ enum class EventType {
     ClientDisconnect,
     DataReceived
 };
+struct DataReceived{
+    int size;
+    char* data;
+};
 
 class EventDispatcher {
 public:

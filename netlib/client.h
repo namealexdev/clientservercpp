@@ -53,7 +53,7 @@ public:
     }
 
     // прокидываем методы в LightEpoll
-    virtual void SendToSocket(char* d, int sz) = 0;
+    virtual void SendToSocket(char* d, uint32_t sz) = 0;
     virtual void StartAsyncQueue() = 0;
     virtual void QueueAdd(char* d, int sz) = 0;
     virtual void QueueSend() = 0;
@@ -64,7 +64,7 @@ public:
     string last_error_;
     // TODO: может state_ переместить в event dispatcher?
     ClientState state_ = ClientState::DISCONNECTED;
-    Stats stats_;
+    Stats stats_;// считаем отправку
 
 protected:
     int create_socket_connect();
@@ -79,7 +79,7 @@ public:
     void Connect();
     void Disconnect();
 
-    void SendToSocket(char* data, int size);
+    void SendToSocket(char* data, uint32_t size);
     void QueueAdd(char* data, int size);
     void QueueSend();
     void StartAsyncQueue();
@@ -101,56 +101,6 @@ private:
     std::mutex queue_mtx_;
     std::queue<std::pair<char*,int>> queue_;
 };
-
-
-// class SinglethreadClient : public IClient, public IClientEventHandler {
-// public:
-//     SinglethreadClient(ClientConfig&& conf);
-//     void connect();
-//     void disconnect();
-
-//     void send(char* d, int sz);
-//     void queue_add(char* d, int sz);
-//     void queue_send();
-
-// private:
-//     ClientLightEpoll epoll_;
-
-//     void onEvent(EventType e);
-// };
-
-// class MultithreadClient : public IClient, public IClientEventHandler {
-// public:
-//     MultithreadClient(ClientConfig&& conf);
-//     void connect();
-//     void disconnect();
-
-//     void send(char *d, int sz);
-//     void queue_add(char *d, int sz);
-//     void queue_send();
-
-// private:
-//     ClientMultithEpoll epoll_;
-// };
-
-
-
-
-// struct Handshake{
-//     std::array<uint8_t, 16> uuid_;
-
-//     void loadUuid(){
-//         // save datetime?
-//         // load and save client session uuid
-//         if (!read_session_uuid("client_session_uuid", uuid_)){
-//             uuid_ = generateUuid();
-//             saveUuid();
-//         }
-//     }
-//     void saveUuid(){
-//         write_session_uuid(uuid_, "client_session_uuid");
-//     }
-// };
 
 
 #endif // CLIENT_H
