@@ -19,6 +19,10 @@ using std::string;
 
 #include "utils.h"
 
+#define BUF_SIZE 65536
+#define MAX_EVENTS 64
+#define EPOLL_TIMEOUT 100
+
 #define d(x) std::cout << x << " \t(" << __FUNCTION__ << " " << __LINE__ << ")" << std::endl;
 
 

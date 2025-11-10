@@ -51,7 +51,7 @@ int IServer::create_listen_socket()
     return sock;
 }
 
-string IServer::getServerState()
+string IServer::GetServerState()
 {
     switch (state_) {
     case ServerState::STOPPED: return "STOPPED";
@@ -63,10 +63,30 @@ string IServer::getServerState()
 
 SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     IServer(std::move(config)), dispatcher_(e){
-    epoll_.onEvent = [this](int fd, uint32_t events) { onEpollEvent(fd, events); };
+
+    epoll_.SetOnReadAcceptHandler([this](int fd) {
+        if (fd == listen_socket_) {
+            handleAccept();
+        } else {
+            handleClientData(fd);
+        }
+    });
+
+    epoll_.SetDisconnectHandler([this](int fd) {
+        d("(WARN) server epoll before disconnect")
+            if (fd == listen_socket_) {
+            epoll_.StopEpoll();
+        } else {
+            removeClient(fd);
+            if (dispatcher_) {
+                dispatcher_->onEvent(EventType::ClientDisconnect);
+            }
+        }
+        d("(WARN) accept_epoll after disconnect")
+    });
 }
 
-bool SimpleServer::start(int num_workers){
+bool SimpleServer::Start(int num_workers){
     auto sock = create_listen_socket();
     if (sock < 0){
         state_ = ServerState::ERROR;
@@ -76,54 +96,33 @@ bool SimpleServer::start(int num_workers){
     state_ = ServerState::WAITING;
 
     listen_socket_ = sock;
-    epoll_.add_fd(sock);
-    epoll_.start();
+    epoll_.AddFd(sock);
+    epoll_.RunEpoll();
     return true;
 }
 
-void SimpleServer::stop(){
-    epoll_.stop();
+void SimpleServer::Stop(){
+    epoll_.StopEpoll();
     if (listen_socket_ > 0) {
         close(listen_socket_);
         listen_socket_ = -1;
     }
 }
 
-int SimpleServer::countClients(){
+int SimpleServer::CountClients(){
     return clients_.size();
 }
 
-void SimpleServer::addClientFd(int fd, const Stats &st){
+void SimpleServer::AddClientFd(int fd, const Stats &st){
     std::lock_guard lock(preClient_socks_mtx_);
     preClient_socks_.push(std::make_pair(fd, std::move(st)));
 }
 
-void SimpleServer::addHandlerEvent(EventType type, std::function<void (void *)> handler){
+void SimpleServer::AddHandlerEvent(EventType type, std::function<void (void *)> handler){
     if (!dispatcher_){
         dispatcher_ = new EventDispatcher;
     }
     dispatcher_->setHandler(type, std::move(handler));
-}
-
-void SimpleServer::onEpollEvent(int fd, uint32_t events){
-    // Обрабатывает события: accept или данные от клиента
-    if (events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
-        if (fd == listen_socket_) {
-            epoll_.stop();
-        } else {
-            removeClient(fd);
-            if (dispatcher_)
-                dispatcher_->onEvent(EventType::ClientDisconnect);
-        }
-        return;
-    }
-    if (events & EPOLLIN) {
-        if (fd == listen_socket_) {
-            handleAccept();
-        } else {
-            handleClientData(fd);
-        }
-    }
 }
 
 void SimpleServer::handleAccept(){
@@ -136,7 +135,7 @@ void SimpleServer::handleAccept(){
             return;
         }
 
-        epoll_.add_fd(client_fd);
+        epoll_.AddFd(client_fd);
 
         char ip_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
@@ -145,8 +144,9 @@ void SimpleServer::handleAccept(){
 
         clients_[client_fd] = std::move(st);
 
-        if (dispatcher_)
+        if (dispatcher_) {
             dispatcher_->onEvent(EventType::ClientConnect);
+        }
     }
 }
 
@@ -154,27 +154,39 @@ void SimpleServer::handleClientData(int fd){
     ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
     if (n > 0) {
         clients_[fd].addBytes(n);
-        if (dispatcher_)
-            dispatcher_->onEvent(EventType::DataReceived, &n);
+        if (dispatcher_) {
+            dispatcher_->onEvent(EventType::DataReceived, &n);}
+
     } else {
         removeClient(fd);
-        if (dispatcher_)
+        if (dispatcher_) {
             dispatcher_->onEvent(EventType::ClientDisconnect);
+        }
     }
 }
 
 void SimpleServer::removeClient(int fd){
-    epoll_.remove_fd(fd);
+    d("srv remove client")
+    epoll_.RemoveFd(fd);
     clients_.erase(fd);
     close(fd);
 }
 
 MultithreadServer::MultithreadServer(ServerConfig config) :
     IServer(std::move(config)){
-    accept_epoll_.onEvent = [this](int fd, uint32_t events) { onEpollEvent(fd, events); };
+    accept_epoll_.SetOnReadAcceptHandler([this](int fd) { handleAccept(fd); });
+    // accept_epoll_.SetErrorHandler([this](int fd) {
+    //     state_ = ServerState::ERROR;
+    // });
+
+    accept_epoll_.SetDisconnectHandler([this](int fd) {
+        d("(WARN) server accept_epoll before disconnect")
+        Stop();
+        d("(WARN) server accept_epoll after disconnect")
+    });
 }
 
-bool MultithreadServer::start(int num_workers){
+bool MultithreadServer::Start(int num_workers){
     auto sock = create_listen_socket();
     if (sock < 0){
         state_ = ServerState::ERROR;
@@ -186,7 +198,7 @@ bool MultithreadServer::start(int num_workers){
     worker_client_counts_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
-        worker->addHandlerEvent(EventType::ClientDisconnect, [this, i](void*) {
+        worker->AddHandlerEvent(EventType::ClientDisconnect, [this, i](void*) {
             --worker_client_counts_[i];
         });
         workers_.push_back(std::move(worker));
@@ -194,36 +206,32 @@ bool MultithreadServer::start(int num_workers){
         // worker_client_counts_.push_back(0);
     }
 
-    accept_epoll_.add_fd(sock);
-    accept_epoll_.start();
+    accept_epoll_.AddFd(sock);
+    accept_epoll_.RunEpoll();
 
     return true;
 }
 
-void MultithreadServer::stop(){
+void MultithreadServer::Stop(){
     state_ = ServerState::STOPPED;
-    accept_epoll_.stop();
+    accept_epoll_.StopEpoll();
 }
 
-int MultithreadServer::countClients(){
+int MultithreadServer::CountClients(){
     return std::accumulate(worker_client_counts_.begin(), worker_client_counts_.end(), 0);
 }
 
-void MultithreadServer::addHandlerEvent(EventType type, std::function<void (void *)> handler){
+void MultithreadServer::AddHandlerEvent(EventType type, std::function<void (void *)> handler){
     if (!dispatcher_){
         dispatcher_ = new EventDispatcher;
     }
     dispatcher_->setHandler(type, std::move(handler));
 }
 
-void MultithreadServer::onEpollEvent(int fd, uint32_t events){
-    // Обрабатывает события только от listen сокета (accept)
-    if (events & EPOLLIN && fd == listen_socket_) {
-        handleAccept();
+void MultithreadServer::handleAccept(int fd){
+    if (fd != listen_socket_){//??
+        return;
     }
-}
-
-void MultithreadServer::handleAccept(){
     while (true) {
         sockaddr_in client_addr{};
         socklen_t addr_len = sizeof(client_addr);
@@ -243,7 +251,7 @@ void MultithreadServer::handleAccept(){
         int idx = std::distance(worker_client_counts_.begin(), it);
 
         // Добавляет сокет в epoll воркера
-        workers_[idx]->addClientFd(client_fd, st);
+        workers_[idx]->AddClientFd(client_fd, st);
         worker_client_counts_[idx]++;
     }
 }

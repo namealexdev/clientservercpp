@@ -43,7 +43,7 @@ class MultithreadFactory : public INetworkFactory{
     }
     IClient* createClient(ClientConfig conf){
         auto* cli = new SimpleClient(std::move(conf));
-        cli->start_async_queue();
+        cli->StartAsyncQueue();
         return cli;
     }
 };

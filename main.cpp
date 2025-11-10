@@ -22,24 +22,36 @@ void test1_connection_state()
     IServer* srv = factory->createServer(std::move(srv_conf));
     IClient* cli = factory->createClient(cli_conf);
 
-    std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
+    std::cout << "srv:" << srv->GetServerState() << " cli:" << cli->GetClientState() << std::endl;
 
-    bool isstart = srv->start();
+    bool isstart = srv->Start();
     d("server start " << isstart)
 
+    // srv->AddHandlerEvent(EventType::ClientConnect, [&](void* ){
+    //     d("[server new client connected]");
+    // });
+    // srv->AddHandlerEvent(EventType::Disconnected, [&](void* ){
+    //     d("[server new client DISSconnected]");
+    // });
+
     // cli->setAutoSend(1);
-    cli->connect();
+    cli->Connect();
     usleep(200);
 
-    std::cout << "[after connect] srv:" << srv->getServerState()
-              << " (" << srv->countClients() << " clis)"
-              << " cli:" << cli->getClientState() << std::endl;
+    string message = "some data";
 
-    cli->disconnect();
+    std::cout << "[after connect] srv:" << srv->GetServerState()
+              << " (" << srv->CountClients() << " clis)"
+              << " cli:" << cli->GetClientState() << std::endl;
+
+
+    cli->SendToSocket(message.data(), message.size());
+
+    cli->Disconnect();
     usleep(200);
-    std::cout << "[after disconnect] srv:" << srv->getServerState()
-              << " (" << srv->countClients() << " clis)"
-              << " cli:" << cli->getClientState() << std::endl;
+    std::cout << "[after disconnect] srv:" << srv->GetServerState()
+              << " (" << srv->CountClients() << " clis)"
+              << " cli:" << cli->GetClientState() << std::endl;
 
     // ClientConfig cli_conf2{
     //     .server_ip = "127.0.0.1",
@@ -47,18 +59,21 @@ void test1_connection_state()
     // };
     IClient* cli2 = factory->createClient(cli_conf);
 
-    cli2->connect();
-    cli->connect();
+    cli2->Connect();
+    cli->Connect();
     usleep(200);
-    std::cout << "[2connect] srv:" << srv->getServerState()
-              << " cli1:" << cli->getClientState()
-              << " cli2:" << cli->getClientState() << std::endl;
+    std::cout << "[2connect] srv:" << srv->GetServerState()
+              << " cli1:" << cli->GetClientState()
+              << " cli2:" << cli->GetClientState() << std::endl;
 
-    srv->stop();
+    // srv->Stop();
+
+    cli->SendToSocket(message.data(), message.size());
+
     usleep(200);
-    std::cout << "[srv stop] srv:" << srv->getServerState()
-              << " cli1:" << cli->getClientState()
-              << " cli2:" << cli->getClientState() << std::endl;
+    std::cout << "[srv stop] srv:" << srv->GetServerState()
+              << " cli1:" << cli->GetClientState()
+              << " cli2:" << cli->GetClientState() << std::endl;
     d("END connection state TEST");
 }
 
@@ -109,13 +124,13 @@ void test3_handshake()
     IServer* srv = factory->createServer(std::move(srv_conf));
     IClient* cli = factory->createClient(std::move(cli_conf));
 
-    srv->start();
-    cli->connect();
+    srv->Start();
+    cli->Connect();
 
-    std::cout << "srv:" << srv->getServerState() << " cli:" << cli->getClientState() << std::endl;
+    std::cout << "srv:" << srv->GetServerState() << " cli:" << cli->GetClientState() << std::endl;
 
     string s("i want check");
-    cli->send(s.data(), s.size());
+    cli->SendToSocket(s.data(), s.size());
 }
 #include <assert.h>
 int main(int argc, char* argv[])

@@ -44,7 +44,7 @@ int IClient::create_socket_connect()
     return sock;
 }
 
-string IClient::getClientState()
+string IClient::GetClientState()
 {
     switch (state_) {
     case ClientState::DISCONNECTED: return "DISCONNECTED";
@@ -58,19 +58,32 @@ string IClient::getClientState()
 
 SimpleClient::SimpleClient(ClientConfig config):
     IClient(std::move(config)) {
-    epoll_.onEvent = [this](int fd, uint32_t events) { onEpollEvent(fd, events); };
+
+    epoll_.SetOnReadAcceptHandler([this](int fd) {
+        // accept тут нету
+        handleData();
+    });
+
+    epoll_.SetDisconnectHandler([this](int fd) {
+        d("(WARN) client epoll before disconnect")
+            if (dispatcher_) {
+            dispatcher_->onEvent(EventType::Disconnected);
+        }
+        Disconnect();
+        d("(WARN) client epoll after disconnect")
+    });
 }
 
 SimpleClient::~SimpleClient()
 {
-    epoll_.stop();
+    epoll_.StopEpoll();
     if(queue_th_){
         queue_th_->join();
         delete queue_th_;
     }
 }
 
-void SimpleClient::connect(){
+void SimpleClient::Connect(){
     auto sock = create_socket_connect();
     if (sock < 0){
         state_ = ClientState::ERROR;
@@ -81,70 +94,56 @@ void SimpleClient::connect(){
     // state_ = ClientState::HANDSHAKE;
     // TODO(): если в очереди есть данные отправляем
 
+    socket_ = sock;
     state_ = ClientState::WAITING;
-    epoll_.add_fd(sock);
-    epoll_.start();
+    epoll_.AddFd(sock);
+    epoll_.RunEpoll();
 }
 
-void SimpleClient::disconnect(){
+void SimpleClient::Disconnect(){
     state_ = ClientState::DISCONNECTED;
-    epoll_.stop();
+    epoll_.RemoveFd(socket_);
+    socket_ = -1;
+    epoll_.StopEpoll();
 }
 
-void SimpleClient::send(char *data, int size){
+void SimpleClient::SendToSocket(char *data, int size){
     if (::send(socket_, data, size, MSG_NOSIGNAL) != size) {
         std::cerr << socket_ << " send() failed: " << strerror(errno) << std::endl;
     }
 }
 
-void SimpleClient::queueAdd(char *data, int size){
+void SimpleClient::QueueAdd(char *data, int size){
     std::lock_guard<std::mutex> lock(queue_mtx_);
     queue_.push(std::make_pair(data, size));
 }
 
-void SimpleClient::queueSend(){
+void SimpleClient::QueueSend(){
     std::lock_guard<std::mutex> lock(queue_mtx_);
     while(!queue_.empty()){
         auto el = queue_.front();
         queue_.pop();
-        send(el.first, el.second);
+        SendToSocket(el.first, el.second);
     }
 }
 
-void SimpleClient::start_async_queue()
+void SimpleClient::StartAsyncQueue()
 {
     queue_th_ = new std::thread([&](){
         while (socket_ > 0){
             if (queue_.empty()){
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
             }
-            queueSend();
+            QueueSend();
         }
     });
 }
 
-void SimpleClient::addHandlerEvent(EventType type, std::function<void (void *)> handler){
+void SimpleClient::AddHandlerEvent(EventType type, std::function<void (void *)> handler){
     if (!dispatcher_){
         dispatcher_ = new EventDispatcher;
     }
     dispatcher_->setHandler(type, std::move(handler));
-}
-
-void SimpleClient::onEpollEvent(int fd, uint32_t events){
-    // Обрабатывает события от epoll: отключение, чтение и т.д.
-    if (events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::Disconnected);
-        }
-        state_ = ClientState::DISCONNECTED;
-        close(socket_);
-        socket_ = -1;
-        return;
-    }
-
-    if (events & EPOLLIN) {
-        handleData();
-    }
 }
 
 void SimpleClient::handleData(){

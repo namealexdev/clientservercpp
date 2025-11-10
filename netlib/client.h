@@ -44,19 +44,21 @@ class IClient {
 public:
     IClient(ClientConfig&& c) : conf_(std::move(c)) {};
 
-    virtual void connect() = 0;
-    virtual void disconnect() = 0;
+    virtual void Connect() = 0;
+    virtual void Disconnect() = 0;
 
-    string getClientState();
+    string GetClientState();
     inline void setAutoSend(bool b){
         auto_send_ = b;
     }
 
     // прокидываем методы в LightEpoll
-    virtual void send(char* d, int sz) = 0;
-    virtual void start_async_queue() = 0;
-    virtual void queueAdd(char* d, int sz) = 0;
-    virtual void queueSend() = 0;
+    virtual void SendToSocket(char* d, int sz) = 0;
+    virtual void StartAsyncQueue() = 0;
+    virtual void QueueAdd(char* d, int sz) = 0;
+    virtual void QueueSend() = 0;
+
+    virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 
     ClientConfig conf_;
     string last_error_;
@@ -74,25 +76,23 @@ public:
     SimpleClient(ClientConfig config);
     ~SimpleClient();
 
-    void connect();
-    void disconnect();
+    void Connect();
+    void Disconnect();
 
-    void send(char* data, int size);
-    void queueAdd(char* data, int size);
-    void queueSend();
-    void start_async_queue();
+    void SendToSocket(char* data, int size);
+    void QueueAdd(char* data, int size);
+    void QueueSend();
+    void StartAsyncQueue();
 
-    void addHandlerEvent(EventType type, std::function<void(void*)> handler);
+    void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
 private:
-    void onEpollEvent(int fd, uint32_t events);
     void handleData();
 
     int socket_ = -1;
     EventDispatcher* dispatcher_ = 0;
     BaseEpoll epoll_;
 
-    static constexpr size_t BUF_SIZE = 65536;
     char buffer[BUF_SIZE];
 
     // WARN: поток и мутекс нужны только для мультипотока

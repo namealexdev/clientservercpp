@@ -33,38 +33,35 @@ private:
     std::unordered_map<EventType, std::function<void(void*)>> handlers_;
 };
 
-// class IClientEventHandler {
-//     public:
-//         virtual ~IClientEventHandler() = default;
-//         virtual void onEvent(EventType e) = 0;
-// };
-
-
-// общий простой епол без сокетов
+// общий простой епол без сокетов - прокидывает события
 class BaseEpoll {
 public:
     BaseEpoll();
     virtual ~BaseEpoll();
 
-    bool add_fd(int fd);
-    void remove_fd(int fd);
-    void start();
-    void stop();
+    bool AddFd(int fd);
+    void RemoveFd(int fd);
+    void RunEpoll();
+    void StopEpoll();
 
     // прокидывает все вызовы сюда
     // void (*on_event_handlers)(int fd, uint32_t events) = 0;
 
     // std::function<void(int fd, uint32_t events)> onEvent = 0;
-    void setAcceptHandler();
-    void setOnWriteHandler();
-    void setErrorHandler();
+    void SetOnReadAcceptHandler(std::function<void(int)> handler) { on_read_ = std::move(handler); };
+    void SetOnWriteHandler(std::function<void(int)> handler) { on_write_ = std::move(handler); };
+    // void SetErrorHandler(std::function<void(int)> handler) { on_error_ = std::move(handler); };
+    void SetDisconnectHandler(std::function<void(int)> handler) { on_hangup_ = std::move(handler); };
 
 private:
     int epfd_ = -1;
-    static const int MAX_EVENTS = 64;
-    static const int EPOLL_TIMEOUT = 100;
 
-    void execLoop();// блокирует
+    std::function<void(int)> on_read_;
+    std::function<void(int)> on_write_;
+    // std::function<void(int)> on_error_;
+    std::function<void(int)> on_hangup_;
+
+    void ExecLoop();// блокирует
     std::unique_ptr<std::thread> thLoop_ = 0;
     bool need_stop_ = false;
 };

@@ -1,6 +1,6 @@
 #include "epoll.h"
 
-bool BaseEpoll::add_fd(int fd)
+bool BaseEpoll::AddFd(int fd)
 {
     const uint32_t events = EPOLLIN | EPOLLRDHUP;
     epoll_event ev{.events = events, .data{.fd = fd}};
@@ -12,21 +12,22 @@ bool BaseEpoll::add_fd(int fd)
     return true;
 }
 
-void BaseEpoll::remove_fd(int fd)
+void BaseEpoll::RemoveFd(int fd)
 {
     epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
+    close(fd);
 }
 
-void BaseEpoll::start(){
+void BaseEpoll::RunEpoll(){
     if (thLoop_){
-        stop();
+        StopEpoll();
         thLoop_->join();
         thLoop_.reset();
     }
-    thLoop_ = std::make_unique<std::thread>([this](){execLoop();});
+    thLoop_ = std::make_unique<std::thread>([this](){ExecLoop();});
 }
 
-void BaseEpoll::stop(){
+void BaseEpoll::StopEpoll(){
     need_stop_ = true;
 }
 
@@ -41,7 +42,7 @@ BaseEpoll::~BaseEpoll(){
     }
 }
 
-void BaseEpoll::execLoop()
+void BaseEpoll::ExecLoop()
 {
     static epoll_event events[MAX_EVENTS];
 
@@ -56,18 +57,41 @@ void BaseEpoll::execLoop()
 
             auto fd = events[i].data.fd;
             auto ev = events[i].events;
+
             switch (ev & (EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
-            case EPOLLOUT:
-                // Можно писать в сокет
+
+            // Разрыв соединения
+            case EPOLLHUP:
+            case EPOLLRDHUP:
+            case EPOLLHUP | EPOLLRDHUP:
+                if (ev & EPOLLERR){
+                    int error = 0;
+                    socklen_t len = sizeof(error);
+                    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error != 0) {
+                        d("Socket error on fd " << fd << ": " << strerror(error));
+                    }
+                }
+                if (on_hangup_) on_hangup_(fd);
                 break;
-            case EPOLLIN:
-                // Можно читать из сокета (например, при accept)
+
+            // Доступны данные для чтения и записи
+            case EPOLLIN:// accept
+                if (on_read_) on_read_(fd);
+                break;
+
+            case EPOLLOUT:
+                if (on_write_) on_write_(fd);
                 break;
             case EPOLLIN | EPOLLOUT:
-                // Можно и читать, и писать
+                if (on_read_) on_read_(fd);
+                if (on_write_) on_write_(fd);
                 break;
+
             default:
-                // Выкидываем сокет: закрытие (EPOLLHUP, EPOLLRDHUP) или ошибка (EPOLLERR, включая broken pipe)
+
+                std::cout << "Unknown event combination: 0x" << std::hex << ev << " on fd " << fd << "\n";
+                throw std::runtime_error("Unknown epoll event ");
+                if (on_hangup_) on_hangup_(fd);
                 break;
             }
 
