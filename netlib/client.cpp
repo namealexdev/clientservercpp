@@ -83,6 +83,18 @@ SimpleClient::~SimpleClient()
     }
 }
 
+bool RecvMsg(int fd, void* buf, size_t size) {
+    char* ptr = static_cast<char*>(buf);
+    size_t total = 0;
+
+    while (total < size) {
+        ssize_t n = recv(fd, ptr + total, size - total, MSG_WAITALL);
+        if (n <= 0) return false;
+        total += n;
+    }
+    return true;
+}
+
 void SimpleClient::Connect(){
     auto sock = create_socket_connect();
     if (sock < 0){
@@ -97,20 +109,24 @@ void SimpleClient::Connect(){
 
 
     state_ = ClientState::HANDSHAKE;
+    d("cli start handshake")
 
     // отправляем сразу!
     // TODO(): load uuid
     uuid_ = generateUuid();
     ClientHiMsg msg;
     msg.uuid = uuid_;
+    d("cli send " << sizeof(msg) << " uuid:" << *uuid_.begin())
     SendToSocket(reinterpret_cast<char*>(&msg), sizeof(msg));
 
+    d("cli wait server msg!")
     // надо ли ждать сразу?
     ServerAnsHiMsg smsg;
     int size = sizeof(smsg);
-    Recv(smsg);
+    RecvMsg(socket_, (char*)&smsg, sizeof(smsg));
 
-    if (smsg.client_mode == ServerAnsHiMsg::ClientMode::SEND){
+    d("cli get recv! " << smsg.client_mode)
+    if (smsg.client_mode == ServerAnsHiMsg::SEND){
         state_ = ClientState::WAITING;
         return;
     }

@@ -44,15 +44,20 @@ struct ClientHiMsg{
 };
 // ждем от сервера ответ 24 байта
 struct ServerAnsHiMsg{
+    enum ClientMode : uint8_t{
+        ERRUUID,
+        SEND
+    };
     // подтверждение что точно наш сервер
     std::array<uint8_t, 16> client_uuid;
     // что клиенту делать дальше
-    enum ClientMode{
-        ERRUUID,
-        SEND
-    } client_mode;
+    ClientMode client_mode;
 };
+static_assert(sizeof(ClientHiMsg) == 16, "Size mismatch");
+static_assert(sizeof(ServerAnsHiMsg) == 17, "Size mismatch");
 #pragma pack(pop)
+
+
 /*
  * клиент отправляет uuid
  * ждем тип (что клиенту делать)

@@ -203,27 +203,26 @@ void SimpleServer::handleClientData(int fd){
 
         // --- Пакет полностью прочитан ---
         d("pkt full recv: " << buf.payload_size << " bytes from fd " << fd);
-        if (dispatcher_) {
-            // TODO(): можно ли тут без if?
-            if (clients_[fd].state == ClientData::HANDSHAKE){
-                ClientHiMsg* pmsg = reinterpret_cast<ClientHiMsg*>(buf.payload.data());
-                clients_[fd].client_uuid = pmsg->uuid;
-                // TODO(): error
 
-                // TODO нормальная десерелизация!!!
-                // TODO(): без size???
-                // restore if needed and need send to socket answer
-                ServerAnsHiMsg smsg;
-                smsg.client_mode = ServerAnsHiMsg::SEND;
-                smsg.client_uuid = pmsg->uuid;
-                send(fd, &smsg, sizeof(smsg), MSG_DONTWAIT);
-            }
+        // TODO(): можно ли тут без if?
+        if (clients_[fd].state == ClientData::HANDSHAKE){
+            ClientHiMsg* pmsg = reinterpret_cast<ClientHiMsg*>(buf.payload.data());
+            clients_[fd].client_uuid = pmsg->uuid;
+            // TODO(): error
+
+            // TODO нормальная десерелизация!!! - пока ок
+            // TODO(): без size???
+            // restore if needed and need send to socket answer
+            ServerAnsHiMsg smsg;
+            smsg.client_mode = ServerAnsHiMsg::SEND;
+            smsg.client_uuid = pmsg->uuid;
+            send(fd, &smsg, sizeof(smsg), MSG_DONTWAIT);
+        }
+        else if (dispatcher_) {
             DataReceived d;
             d.data = buf.payload.data();
             d.size = buf.payload.size();
             dispatcher_->onEvent(EventType::DataReceived, &d);
-
-
         }
 
         buf.reset(); // Готовимся к следующему пакету

@@ -36,9 +36,13 @@ void test1_connection_state()
 
     // cli->setAutoSend(1);
     cli->Connect();
+
+    std::cout << "[f after connect] srv:" << srv->GetServerState()
+              << " (" << srv->CountClients() << " clis)"
+              << " cli:" << cli->GetClientState() << std::endl;
     usleep(2*1000);
 
-    std::cout << "[after connect] srv:" << srv->GetServerState()
+    std::cout << "[s after connect] srv:" << srv->GetServerState()
               << " (" << srv->CountClients() << " clis)"
               << " cli:" << cli->GetClientState() << std::endl;
 
