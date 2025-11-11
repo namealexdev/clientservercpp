@@ -9,6 +9,7 @@ bool BaseEpoll::AddFd(int fd)
         std::cout << "fail epoll_ctl add " << fd << " error: " << strerror(errno)<< std::endl;
         return false;
     }
+    d("addfd " << fd)
     return true;
 }
 
@@ -24,7 +25,7 @@ void BaseEpoll::RunEpoll(){
         thLoop_->join();
         thLoop_.reset();
     }
-    thLoop_ = std::make_unique<std::thread>([this](){ExecLoop();});
+    thLoop_ = std::make_unique<std::thread>([&](){ExecLoop();});
 }
 
 void BaseEpoll::StopEpoll(){
@@ -44,11 +45,13 @@ BaseEpoll::~BaseEpoll(){
 
 void BaseEpoll::ExecLoop()
 {
+    d("ExecLoop")
     static epoll_event events[MAX_EVENTS];
 
     while (!need_stop_) {
         int nfds = epoll_wait(epfd_, events, MAX_EVENTS, EPOLL_TIMEOUT);
         if (nfds == -1) {
+            d("epoll timeout")
             if (errno == EINTR) continue;
             throw std::runtime_error("epoll_wait");
         }
@@ -58,15 +61,12 @@ void BaseEpoll::ExecLoop()
             auto fd = events[i].data.fd;
             auto ev = events[i].events;
 
-            d(fd << " " << ev)
+            d(" " << fd << " " << std::hex << ev << std::dec)
 
-            switch (ev & (EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
+            bool handled = false;
 
-            // Разрыв соединения
-            case EPOLLHUP:
-            case EPOLLRDHUP:
-            case EPOLLHUP | EPOLLRDHUP:
-                if (ev & EPOLLERR){
+            if (ev & (EPOLLHUP | EPOLLRDHUP)) {
+                if (ev & EPOLLERR) {
                     int error = 0;
                     socklen_t len = sizeof(error);
                     if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error != 0) {
@@ -74,34 +74,29 @@ void BaseEpoll::ExecLoop()
                     }
                 }
                 if (on_hangup_) on_hangup_(fd);
-                break;
-
-            // Доступны данные для чтения и записи
-            case EPOLLIN:// accept
-                if (on_read_) on_read_(fd);
-                break;
-
-            case EPOLLOUT:
-                if (on_write_) on_write_(fd);
-                break;
-            case EPOLLIN | EPOLLOUT:
-                if (on_read_) on_read_(fd);
-                if (on_write_) on_write_(fd);
-                break;
-
-            default:
-
-                std::cout << "Unknown event combination: 0x" << std::hex << ev << " on fd " << fd << "\n";
-                throw std::runtime_error("Unknown epoll event ");
-                if (on_hangup_) on_hangup_(fd);
-                break;
+                handled = true;
             }
 
-            // if (onEvent){
-            //     onEvent(events[i].data.fd, events[i].events);
-            // }
+            if (ev & EPOLLIN) {
+                if (!handled) {  // только если не было HUP/RDHUP
+                    if (on_read_) on_read_(fd);
+                }
+                handled = true;
+            }
+
+            if (ev & EPOLLOUT) {
+                if (on_write_) on_write_(fd);
+                handled = true;
+            }
+
+            if (!handled) {
+                d("Unknown event combination: 0x" << std::hex << ev << " on fd " << fd << std::dec);
+                // throw std::runtime_error("Unknown epoll event " + std::to_string(ev));
+                // ^-- уберите, если хотите продолжать работу, а не падать
+            }
         }
     }
+    d("STOP ExecLoop")
 }
 
 

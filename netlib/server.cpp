@@ -1,4 +1,5 @@
 #include "server.h"
+#include <cassert>
 // #include "serialization.h"
 
 int IServer::create_listen_socket()
@@ -64,7 +65,7 @@ string IServer::GetServerState()
 SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     IServer(std::move(config)), dispatcher_(e){
 
-    epoll_.SetOnReadAcceptHandler([this](int fd) {
+    epoll_.SetOnReadAcceptHandler([&](int fd) {
         d("  handle accept recv ")
         if (fd == listen_socket_) {
             handleAccept();
@@ -73,7 +74,7 @@ SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
         }
     });
 
-    epoll_.SetDisconnectHandler([this](int fd) {
+    epoll_.SetDisconnectHandler([&](int fd) {
         d("(WARN) server epoll before disconnect")
             if (fd == listen_socket_) {
             epoll_.StopEpoll();
@@ -87,7 +88,13 @@ SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     });
 }
 
-bool SimpleServer::Start(int num_workers){
+void SimpleServer::StartWait()
+{
+    // d("start wait epoll")
+    epoll_.RunEpoll();
+}
+
+bool SimpleServer::StartListen(int num_workers){
     auto sock = create_listen_socket();
     if (sock < 0){
         state_ = ServerState::ERROR;
@@ -115,7 +122,9 @@ int SimpleServer::CountClients(){
 
 void SimpleServer::AddClientFd(int fd, const Stats &st){
     std::lock_guard lock(preClient_socks_mtx_);
-    preClient_socks_.push(std::make_pair(fd, std::move(st)));
+    clients_[fd].stats = std::move(st);
+    epoll_.AddFd(fd);
+    // preClient_socks_.push(std::make_pair(fd, std::move(st)));
 }
 
 void SimpleServer::AddHandlerEvent(EventType type, std::function<void (void *)> handler){
@@ -142,73 +151,68 @@ void SimpleServer::handleAccept(){
         Stats st;
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
+        std::lock_guard lock(preClient_socks_mtx_);
         clients_[client_fd].stats = std::move(st);
         clients_[client_fd].state = ClientData::HANDSHAKE;
     }
 }
 
-void SimpleServer::handleClientData(int fd){
-    // читаем size message
-    ClientBuffer &buf = clients_[fd].buf; // Состояние клиента
+void SimpleServer::handleClientData(int fd)
+{
+    ClientBuffer& buf = clients_[fd].buf;
 
-    d("srv get handle data")
+    d("-srv get " << ((clients_[fd].state == ClientData::HANDSHAKE)?"[handshake]":" [handle data]"))
 
-    // Пытаемся обработать ВСЕ доступные пакеты за один вызов
     while (true) {
-        // --- Этап 1: Чтение 4-байтового заголовка ---
+        // читаем 4 байта - size
         if (buf.header_read < sizeof(buf.header)) {
             ssize_t n = recv(fd, buf.header.bytes + buf.header_read,
                              sizeof(buf.header) - buf.header_read, MSG_DONTWAIT);
-            if (n < 0) {
+            if (n <= 0) {
                 if (errno == EAGAIN) return;
-                // handle_error(fd, n);
-                return;
-            }
-            if (n == 0) {
                 // handle_error(fd, n);
                 return;
             }
             buf.header_read += n;
 
-            if (buf.header_read < sizeof(buf.header)) return; // Ждём ещё
+            if (buf.header_read < sizeof(buf.header)) continue; // Ждём ещё
 
             buf.payload_size = ntohl(buf.header.net_value); // Парсим размер
 
             // ВАЛИДАЦИЯ
-            if (buf.payload_size == 0 /*|| buf.payload_size > MAX_PACKET_SIZE*/) {
-                std::cerr << "Invalid packet size: " << buf.payload_size << " from fd " << fd << std::endl;
-                removeClient(fd);
-                return;
-            }
+            // if (buf.payload_size == 0) {
+            //     std::cerr << "Invalid packet size: " << buf.payload_size << " from fd " << fd << std::endl;
+            //     removeClient(fd);
+            //     return;
+            // }
             buf.payload.resize(buf.payload_size); // Выделяем/переиспользуем память
         }
 
-        // --- Этап 2: Чтение данных пакета ---
+        // читаем данные
         if (buf.payload_read < buf.payload_size) {
             ssize_t n = recv(fd, buf.payload.data() + buf.payload_read,
                              buf.payload_size - buf.payload_read, MSG_DONTWAIT);
-            if (n < 0) {
+            if (n <= 0) {
                 if (errno == EAGAIN) return; // Данных больше нет — нормально
-                // handle_error(fd, n);
-                return;
-            }
-            if (n == 0) {
                 // handle_error(fd, n);
                 return;
             }
             buf.payload_read += n;
 
-            if (buf.payload_read < buf.payload_size) return; // Ждём ещё
+            if (buf.payload_read < buf.payload_size) continue; // Ждём ещё
         }
 
-        // --- Пакет полностью прочитан ---
-        d("pkt full recv: " << buf.payload_size << " bytes from fd " << fd);
+        // все прочитали
+        d("(end read pkt) recv: " << buf.payload_size << " bytes from fd " << fd);
 
         // TODO(): можно ли тут без if?
         if (clients_[fd].state == ClientData::HANDSHAKE){
             ClientHiMsg* pmsg = reinterpret_cast<ClientHiMsg*>(buf.payload.data());
             clients_[fd].client_uuid = pmsg->uuid;
+
             // TODO(): error
+
+            d("-srv end handshake. send answ. " << uuid_to_string(pmsg->uuid))
 
             // TODO нормальная десерелизация!!! - пока ок
             // TODO(): без size???
@@ -225,7 +229,7 @@ void SimpleServer::handleClientData(int fd){
             dispatcher_->onEvent(EventType::DataReceived, &d);
         }
 
-        buf.reset(); // Готовимся к следующему пакету
+        buf.reset();
     }
 
 
@@ -252,25 +256,30 @@ void SimpleServer::handleClientData(int fd){
 void SimpleServer::removeClient(int fd){
     d("srv remove client")
     epoll_.RemoveFd(fd);
-    clients_.erase(fd);
     close(fd);
+
+    std::lock_guard lock(preClient_socks_mtx_);
+    clients_.erase(fd);
 }
 
 MultithreadServer::MultithreadServer(ServerConfig config) :
     IServer(std::move(config)){
-    accept_epoll_.SetOnReadAcceptHandler([this](int fd) { handleAccept(fd); });
-    // accept_epoll_.SetErrorHandler([this](int fd) {
+    accept_epoll_.SetOnReadAcceptHandler([&](int fd) { handleAccept(fd); });
+    // accept_epoll_.SetErrorHandler([&](int fd) {
     //     state_ = ServerState::ERROR;
     // });
 
-    accept_epoll_.SetDisconnectHandler([this](int fd) {
+    accept_epoll_.SetDisconnectHandler([&](int fd) {
         d("(WARN) server accept_epoll before disconnect")
         Stop();
         d("(WARN) server accept_epoll after disconnect")
     });
 }
 
-bool MultithreadServer::Start(int num_workers){
+bool MultithreadServer::StartListen(int num_workers){
+    if (num_workers == 0){
+        return false;
+    }
     auto sock = create_listen_socket();
     if (sock < 0){
         state_ = ServerState::ERROR;
@@ -279,12 +288,13 @@ bool MultithreadServer::Start(int num_workers){
 
     state_ = ServerState::WAITING;
 
-    worker_client_counts_.reserve(num_workers);
+    worker_client_counts_.resize(num_workers, 0);
     for (int i = 0; i < num_workers; ++i) {
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
         worker->AddHandlerEvent(EventType::ClientDisconnect, [this, i](void*) {
             --worker_client_counts_[i];
         });
+        worker->StartWait();
         workers_.push_back(std::move(worker));
         worker_client_counts_[i] = 0;
         // worker_client_counts_.push_back(0);
@@ -293,6 +303,7 @@ bool MultithreadServer::Start(int num_workers){
     listen_socket_ = sock;
     accept_epoll_.AddFd(sock);
     accept_epoll_.RunEpoll();
+    d("start srv epoll workers " << num_workers)
 
     return true;
 }
@@ -315,9 +326,11 @@ void MultithreadServer::AddHandlerEvent(EventType type, std::function<void (void
 }
 
 void MultithreadServer::handleAccept(int fd){
-    if (fd != listen_socket_){//??
-        return;
-    }
+    // d("srv accept " << fd << " " << listen_socket_)
+    // if (fd != listen_socket_){//??
+    //     return;
+    // }
+    assert(fd == listen_socket_);
     while (true) {
         sockaddr_in client_addr{};
         socklen_t addr_len = sizeof(client_addr);
@@ -332,9 +345,12 @@ void MultithreadServer::handleAccept(int fd){
         Stats st;
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
+
         // Находит воркер с минимальным числом клиентов
         auto it = std::min_element(worker_client_counts_.begin(), worker_client_counts_.end());
         int idx = std::distance(worker_client_counts_.begin(), it);
+
+        d("accept " << st.ip << " min:" << idx)
 
         // Добавляет сокет в epoll воркера
         workers_[idx]->AddClientFd(client_fd, st);

@@ -48,9 +48,9 @@ public:
     virtual void Disconnect() = 0;
 
     string GetClientState();
-    inline void setAutoSend(bool b){
-        auto_send_ = b;
-    }
+    // inline void SetAutoSend(bool b){
+    //     auto_send_ = b;
+    // }
 
     // прокидываем методы в LightEpoll
     virtual void SendToSocket(char* d, uint32_t sz) = 0;
@@ -60,6 +60,13 @@ public:
 
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 
+    Stats& GetStats(){return stats_;}
+    std::string_view GetLastError(){return last_error_;}
+
+protected:
+    int create_socket_connect();
+    bool auto_send_ = true;
+
     ClientConfig conf_;
     string last_error_;
     // TODO: может state_ переместить в event dispatcher?
@@ -67,10 +74,6 @@ public:
     Stats stats_;// считаем отправку
 
     std::array<uint8_t, 16> uuid_;
-
-protected:
-    int create_socket_connect();
-    bool auto_send_ = true;
 };
 
 class SimpleClient : public IClient{

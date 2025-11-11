@@ -61,27 +61,30 @@ enum class ServerState : uint8_t{
 class IServer{
 public:
     IServer(ServerConfig&& c) : conf_(std::move(c)) {};
-    virtual bool Start(int num_workers = 0) = 0; // wait accept
+    virtual bool StartListen(int num_workers = 0) = 0; // wait accept
     virtual void Stop() = 0;
     virtual int CountClients() = 0;
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 
-    ServerConfig conf_;
-    string last_error_;
-    Stats stats_;
-
+    Stats& GetStats(){return stats_;}
+    std::string_view GetLastError(){return last_error_;}
     string GetServerState();
 
 protected:
     ServerState state_ = ServerState::STOPPED;
     int create_listen_socket();
+
+    ServerConfig conf_;
+    string last_error_;
+    Stats stats_;
 };
 
 
 class SimpleServer : public IServer{
 public:
     SimpleServer(ServerConfig config, EventDispatcher* e = nullptr);
-    bool Start(int num_workers = 0);
+    bool StartListen(int num_workers = 0);
+    void StartWait();
     void Stop();
     int CountClients();
 
@@ -103,7 +106,7 @@ private:
     std::unordered_map<int, ClientData> clients_;
 
     // WARN: нужно только для мультипотока
-    std::queue<std::pair<int, Stats>> preClient_socks_;
+    // std::queue<std::pair<int, Stats>> preClient_socks_;
     std::mutex preClient_socks_mtx_;
 };
 
@@ -111,7 +114,7 @@ class MultithreadServer : public IServer{
 public:
     explicit MultithreadServer(ServerConfig config);
 
-    bool Start(int num_workers);
+    bool StartListen(int num_workers = 1);
     void Stop();
     int CountClients();
 

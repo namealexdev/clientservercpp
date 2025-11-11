@@ -15,4 +15,5 @@ bool write_session_uuid(std::array<uint8_t, 16> client_session_uuid, const std::
 bool read_session_uuid(const std::string& filename, std::array<uint8_t, 16>& result);
 
 
+std::string uuid_to_string(const std::array<uint8_t, 16>& uuid);
 #endif // UTILS_H

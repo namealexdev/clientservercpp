@@ -59,12 +59,12 @@ string IClient::GetClientState()
 SimpleClient::SimpleClient(ClientConfig config):
     IClient(std::move(config)) {
 
-    epoll_.SetOnReadAcceptHandler([this](int fd) {
+    epoll_.SetOnReadAcceptHandler([&](int fd) {
         // accept тут нету
         handleData();
     });
 
-    epoll_.SetDisconnectHandler([this](int fd) {
+    epoll_.SetDisconnectHandler([&](int fd) {
         d("(WARN) client epoll before disconnect")
             if (dispatcher_) {
             dispatcher_->onEvent(EventType::Disconnected);
@@ -95,6 +95,8 @@ bool RecvMsg(int fd, void* buf, size_t size) {
     return true;
 }
 
+
+
 void SimpleClient::Connect(){
     auto sock = create_socket_connect();
     if (sock < 0){
@@ -109,23 +111,22 @@ void SimpleClient::Connect(){
 
 
     state_ = ClientState::HANDSHAKE;
-    d("cli start handshake")
 
     // отправляем сразу!
     // TODO(): load uuid
     uuid_ = generateUuid();
     ClientHiMsg msg;
     msg.uuid = uuid_;
-    d("cli send " << sizeof(msg) << " uuid:" << *uuid_.begin())
+    d("-cli handshake send " << sizeof(msg) << " uuid:" << uuid_to_string(uuid_))
     SendToSocket(reinterpret_cast<char*>(&msg), sizeof(msg));
 
-    d("cli wait server msg!")
+    d("-cli handshake wait server msg!")
     // надо ли ждать сразу?
     ServerAnsHiMsg smsg;
     int size = sizeof(smsg);
     RecvMsg(socket_, (char*)&smsg, sizeof(smsg));
 
-    d("cli get recv! " << smsg.client_mode)
+    d("cli end handshake get recv! " << smsg.client_mode)
     if (smsg.client_mode == ServerAnsHiMsg::SEND){
         state_ = ClientState::WAITING;
         return;
