@@ -24,6 +24,6 @@ using std::string;
 #define EPOLL_TIMEOUT 100
 
 #define d(x) std::cout << x << " \t(" << __FUNCTION__ << " " << __LINE__ << ")" << std::endl;
-
+#define d(x)
 
 #endif // CONST_H

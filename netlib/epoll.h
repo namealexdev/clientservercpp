@@ -8,11 +8,8 @@
 #include "stats.h"
 
 enum class EventType {
-    Disconnected,
-    Reconnected,
-    Waiting,
-    ClientConnect,
-    ClientDisconnect,
+    ClientConnected,
+    ClientDisconnected,
     DataReceived
 };
 struct DataReceived{

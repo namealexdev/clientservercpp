@@ -4,6 +4,8 @@
 #include "const.h"
 #include "stats.h"
 #include "epoll.h"
+#include <condition_variable>
+#include <mutex>
 
 struct ClientConfig{
     string host;
@@ -48,6 +50,9 @@ public:
     virtual void Disconnect() = 0;
 
     string GetClientState();
+    // Wait until the client connects (WAITING or SENDING) or ERROR/timeout occurs.
+    // Returns true on WAITING/SENDING; false on timeout or ERROR.
+    bool wait_connecting(int timeout_ms);
     // inline void SetAutoSend(bool b){
     //     auto_send_ = b;
     // }
@@ -64,6 +69,14 @@ public:
     std::string_view GetLastError(){return last_error_;}
 
 protected:
+    void set_state(ClientState s){
+        {
+            std::lock_guard<std::mutex> lk(state_mtx_);
+            state_ = s;
+        }
+        state_cv_.notify_all();
+    }
+
     int create_socket_connect();
     bool auto_send_ = true;
 
@@ -74,6 +87,9 @@ protected:
     Stats stats_;// считаем отправку
 
     std::array<uint8_t, 16> uuid_;
+
+    std::mutex state_mtx_;
+    std::condition_variable state_cv_;
 };
 
 class SimpleClient : public IClient{

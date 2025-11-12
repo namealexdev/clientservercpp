@@ -61,7 +61,7 @@ void BaseEpoll::ExecLoop()
             auto fd = events[i].data.fd;
             auto ev = events[i].events;
 
-            d(" " << fd << " " << std::hex << ev << std::dec)
+            // d(" " << fd << " " << std::hex << ev << std::dec)
 
             bool handled = false;
 
@@ -69,7 +69,8 @@ void BaseEpoll::ExecLoop()
                 if (ev & EPOLLERR) {
                     int error = 0;
                     socklen_t len = sizeof(error);
-                    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error != 0) {
+                    getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len);
+                    if (error) {
                         d("Socket error on fd " << fd << ": " << strerror(error));
                     }
                 }

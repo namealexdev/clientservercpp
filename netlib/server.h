@@ -4,27 +4,30 @@
 #include "const.h"
 #include "epoll.h"
 #include "stats.h"
+#include <condition_variable>
+#include <mutex>
 
 
 struct ClientBuffer {
-    // Заголовок: 4 байта размера в сетевом порядке
+    #define HEADER_SIZE 4
+    #define MAX_PAYLOAD_SIZE 16 * 1024 * 1024 // 16MB защита
+    
     union {
-        uint32_t net_value; // Используем после полного чтения
-        char bytes[4];      // Читаем по байтам
+        uint32_t net_value; // Сетевой порядок (big-endian)
+        char bytes[HEADER_SIZE];// Читаем по байтам
     } header;
-    uint8_t header_read = 0; // Прогресс чтения заголовка [0..4]
+    uint8_t pos_header = 0; // Прогресс чтения
 
     // Данные пакета
     uint32_t payload_size = 0; // Размер в хостовом порядке
     std::vector<char> payload;   // Буфер (переиспользуется)
-    uint32_t payload_read = 0;   // Прогресс чтения данных
+    uint32_t pos_payload = 0;   // Прогресс чтения данных
 
-    // Подготовка к следующему пакету (быстро, без освобождения памяти)
     void reset() {
-        header_read = 0;
+        pos_header = 0;
         payload_size = 0;
-        payload_read = 0;
-        payload.resize(0); // Только изменяет size, capacity остаётся
+        pos_payload = 0;
+        payload.resize(0);
     }
 };
 
@@ -70,13 +73,28 @@ public:
     std::string_view GetLastError(){return last_error_;}
     string GetServerState();
 
+    // Wait until server enters WAITING state, or ERROR/timeout occurs.
+    // Returns true if WAITING reached; false otherwise.
+    bool wait_started(int timeout_ms);
+
 protected:
+    // state and synchronization
+    void set_state(ServerState s){
+        {
+            std::lock_guard<std::mutex> lk(state_mtx_);
+            state_ = s;
+        }
+        state_cv_.notify_all();
+    }
     ServerState state_ = ServerState::STOPPED;
     int create_listen_socket();
 
     ServerConfig conf_;
     string last_error_;
     Stats stats_;
+
+    std::mutex state_mtx_;
+    std::condition_variable state_cv_;
 };
 
 

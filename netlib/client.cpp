@@ -65,12 +65,12 @@ SimpleClient::SimpleClient(ClientConfig config):
     });
 
     epoll_.SetDisconnectHandler([&](int fd) {
-        d("(WARN) client epoll before disconnect")
+        // d("(WARN) client epoll before disconnect")
             if (dispatcher_) {
             dispatcher_->onEvent(EventType::Disconnected);
         }
         Disconnect();
-        d("(WARN) client epoll after disconnect")
+        // d("(WARN) client epoll after disconnect")
     });
 }
 
@@ -126,7 +126,7 @@ void SimpleClient::Connect(){
     int size = sizeof(smsg);
     RecvMsg(socket_, (char*)&smsg, sizeof(smsg));
 
-    d("cli end handshake get recv! " << smsg.client_mode)
+    d("-cli end handshake get recv! " << smsg.client_mode)
     if (smsg.client_mode == ServerAnsHiMsg::SEND){
         state_ = ClientState::WAITING;
         return;

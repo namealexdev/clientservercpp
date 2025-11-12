@@ -66,31 +66,32 @@ SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     IServer(std::move(config)), dispatcher_(e){
 
     epoll_.SetOnReadAcceptHandler([&](int fd) {
-        d("  handle accept recv ")
+        // d("  handle accept recv ")
         if (fd == listen_socket_) {
             handleAccept();
         } else {
+            // if (clients_[fd].state == ClientData::HANDSHAKE){
+            //     handleHandshake(fd);
+            // }else
             handleClientData(fd);
         }
     });
 
     epoll_.SetDisconnectHandler([&](int fd) {
-        d("(WARN) server epoll before disconnect")
-            if (fd == listen_socket_) {
-            epoll_.StopEpoll();
+        // d("(WARN) server epoll before disconnect")
+        if (fd == listen_socket_) {
+            Stop();
         } else {
             removeClient(fd);
-            if (dispatcher_) {
-                dispatcher_->onEvent(EventType::ClientDisconnect);
-            }
         }
-        d("(WARN) accept_epoll after disconnect")
+        // d("(WARN) accept_epoll after disconnect")
     });
 }
 
 void SimpleServer::StartWait()
 {
     // d("start wait epoll")
+    state_ = ServerState::WAITING;
     epoll_.RunEpoll();
 }
 
@@ -157,6 +158,25 @@ void SimpleServer::handleAccept(){
     }
 }
 
+// bool SimpleServer::readIntoBuffer(int fd, ClientBuffer& buf)
+// {
+//     ssize_t n = recv(fd, temp, sizeof(temp), MSG_DONTWAIT);
+    
+//     if (n == 0) { removeClient(fd); return false; }
+//     if (n < 0) {
+//         if (errno != EAGAIN && errno != EWOULDBLOCK) removeClient(fd);
+//         return false;
+//     }
+    
+//     if (!buf.feed(temp, n)) {
+//         std::cerr << "Invalid packet from fd " << fd << std::endl;
+//         removeClient(fd);
+//         return false;
+//     }
+//     return true;
+// }
+
+
 void SimpleServer::handleClientData(int fd)
 {
     ClientBuffer& buf = clients_[fd].buf;
@@ -164,18 +184,21 @@ void SimpleServer::handleClientData(int fd)
     d("-srv get " << ((clients_[fd].state == ClientData::HANDSHAKE)?"[handshake]":" [handle data]"))
 
     while (true) {
+        // if (buf.read(fd)){
+        // }
         // читаем 4 байта - size
-        if (buf.header_read < sizeof(buf.header)) {
-            ssize_t n = recv(fd, buf.header.bytes + buf.header_read,
-                             sizeof(buf.header) - buf.header_read, MSG_DONTWAIT);
+        if (buf.pos_header < sizeof(buf.header)) {
+            ssize_t n = recv(fd, buf.header.bytes + buf.pos_header,
+                             sizeof(buf.header) - buf.pos_header, MSG_DONTWAIT);
             if (n <= 0) {
                 if (errno == EAGAIN) return;
                 // handle_error(fd, n);
+                removeClient(fd);
                 return;
             }
-            buf.header_read += n;
+            buf.pos_header += n;
 
-            if (buf.header_read < sizeof(buf.header)) continue; // Ждём ещё
+            if (buf.pos_header < sizeof(buf.header)) continue; // Ждём ещё
 
             buf.payload_size = ntohl(buf.header.net_value); // Парсим размер
 
@@ -189,17 +212,18 @@ void SimpleServer::handleClientData(int fd)
         }
 
         // читаем данные
-        if (buf.payload_read < buf.payload_size) {
-            ssize_t n = recv(fd, buf.payload.data() + buf.payload_read,
-                             buf.payload_size - buf.payload_read, MSG_DONTWAIT);
+        if (buf.pos_payload < buf.payload_size) {
+            ssize_t n = recv(fd, buf.payload.data() + buf.pos_payload,
+                             buf.payload_size - buf.pos_payload, MSG_DONTWAIT);
             if (n <= 0) {
                 if (errno == EAGAIN) return; // Данных больше нет — нормально
                 // handle_error(fd, n);
+                removeClient(fd);
                 return;
             }
-            buf.payload_read += n;
+            buf.pos_payload += n;
 
-            if (buf.payload_read < buf.payload_size) continue; // Ждём ещё
+            if (buf.pos_payload < buf.payload_size) continue; // Ждём ещё
         }
 
         // все прочитали
@@ -222,7 +246,9 @@ void SimpleServer::handleClientData(int fd)
             smsg.client_uuid = pmsg->uuid;
             send(fd, &smsg, sizeof(smsg), MSG_DONTWAIT);
         }
-        else if (dispatcher_) {
+        else
+        // какая-то запись в очередь
+        if (dispatcher_) {
             DataReceived d;
             d.data = buf.payload.data();
             d.size = buf.payload.size();
@@ -231,32 +257,15 @@ void SimpleServer::handleClientData(int fd)
 
         buf.reset();
     }
-
-
-    // пытаемся прочитать size? чтобы узнать размер пакета
-    // clients_[fd].stats.addBytes(size);
-
-    // ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
-    // if (n > 0) {
-
-
-    //     d("pkt full recv: " << n << " bytes");
-    //     if (dispatcher_) {
-    //         dispatcher_->onEvent(EventType::DataReceived, &n);
-    //     }
-
-    // } else {
-    //     removeClient(fd);
-    //     if (dispatcher_) {
-    //         dispatcher_->onEvent(EventType::ClientDisconnect);
-    //     }
-    // }
 }
 
 void SimpleServer::removeClient(int fd){
     d("srv remove client")
     epoll_.RemoveFd(fd);
-    close(fd);
+
+    if (dispatcher_) {
+        dispatcher_->onEvent(EventType::ClientDisconnected);
+    }
 
     std::lock_guard lock(preClient_socks_mtx_);
     clients_.erase(fd);
@@ -270,9 +279,9 @@ MultithreadServer::MultithreadServer(ServerConfig config) :
     // });
 
     accept_epoll_.SetDisconnectHandler([&](int fd) {
-        d("(WARN) server accept_epoll before disconnect")
+        // d("(WARN) server accept_epoll before disconnect")
         Stop();
-        d("(WARN) server accept_epoll after disconnect")
+        // d("(WARN) server accept_epoll after disconnect")
     });
 }
 

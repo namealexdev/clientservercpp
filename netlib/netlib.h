@@ -6,13 +6,6 @@
 #include "client.h"
 
 
-// class IServer;
-// class IClient;
-// struct ServerConfig;
-// struct ClientConfig;
-// class SinglethreadServer;
-// class SinglethreadClient;
-
 //todo to uniqptr
 
 // factory
