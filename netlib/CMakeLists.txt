@@ -6,17 +6,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(netlib SHARED
+  libinclude/netlib.h
+  libinclude/stats.h
+  libinclude/iclient.h
+  libinclude/iserver.h
+
+  stats.cpp
   netlib.cpp
-  netlib.h
+
+  const.h
+  epoll.h epoll.cpp
   server.h server.cpp
   client.h client.cpp
-  const.h
-  # queue.h
   utils.h utils.cpp
-  stats.h
-  # serialization.h serialization.cpp
-  epoll.h epoll.cpp
-
 )
 
 target_include_directories(netlib PUBLIC

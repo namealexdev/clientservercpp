@@ -66,8 +66,8 @@ SimpleClient::SimpleClient(ClientConfig config):
 
     epoll_.SetDisconnectHandler([&](int fd) {
         // d("(WARN) client epoll before disconnect")
-            if (dispatcher_) {
-            dispatcher_->onEvent(EventType::Disconnected);
+        if (dispatcher_) {
+            dispatcher_->onEvent(EventType::ClientDisconnected);
         }
         Disconnect();
         // d("(WARN) client epoll after disconnect")

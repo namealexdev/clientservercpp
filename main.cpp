@@ -5,7 +5,8 @@
 #include <memory>
 #include <iostream>
 #include <iomanip>
-#include <netlib.h>
+#include <libinclude/netlib.h>
+
 template <typename FactoryMode, int server_workers = 0>
 void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 10)
 {
@@ -20,7 +21,7 @@ void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 
         std::unique_ptr<INetworkFactory> factory = std::make_unique<FactoryMode>();
         ServerConfig srv_conf{ .port = port, .max_connections = clients };
 
-        IServer* srv = factory->createServer(srv_conf);
+        auto srv = factory->createServer(srv_conf);
         if (!srv || !srv->StartListen(server_workers)) {
             std::cerr << "Failed to start server" << std::endl;
             return;
@@ -29,7 +30,7 @@ void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 
         std::cout << "Server started on port " << port << std::endl;
 
         // Add handler for new connections
-        srv->AddHandlerEvent(EventType::ClientConnect, [&](void* data) {
+        srv->AddHandlerEvent(EventType::ClientConnected, [&](void* data) {
             clients_connected++;
         });
 
@@ -46,7 +47,6 @@ void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 
 
         std::cout << "Stopping server..." << std::endl;
         srv->Stop();
-        delete srv;
     });
 
     // Give server time to start
@@ -66,7 +66,7 @@ void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 
                 .server_port = port
             };
 
-            IClient* cli = factory->createClient(cli_conf);
+            auto cli = factory->createClient(cli_conf);
             if (!cli) {
                 std::cerr << "Client " << client_id << " failed to create" << std::endl;
                 return;

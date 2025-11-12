@@ -5,17 +5,6 @@
 #include <sys/epoll.h>
 #include <atomic>
 #include "const.h"
-#include "stats.h"
-
-enum class EventType {
-    ClientConnected,
-    ClientDisconnected,
-    DataReceived
-};
-struct DataReceived{
-    int size;
-    char* data;
-};
 
 class EventDispatcher {
 public:

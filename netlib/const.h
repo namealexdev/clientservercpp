@@ -18,6 +18,7 @@
 using std::string;
 
 #include "utils.h"
+#include "libinclude/stats.h"
 
 #define BUF_SIZE 65536
 #define MAX_EVENTS 64

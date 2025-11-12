@@ -300,7 +300,7 @@ bool MultithreadServer::StartListen(int num_workers){
     worker_client_counts_.resize(num_workers, 0);
     for (int i = 0; i < num_workers; ++i) {
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
-        worker->AddHandlerEvent(EventType::ClientDisconnect, [this, i](void*) {
+        worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
             --worker_client_counts_[i];
         });
         worker->StartWait();
