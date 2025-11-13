@@ -88,7 +88,7 @@ public:
 
     // std::function<void(int fd, uint32_t events)> onEvent = 0;
     void SetOnReadAcceptHandler(std::function<void(int)> handler) { on_read_ = std::move(handler); };
-    void SetOnWriteHandler(std::function<void(int)> handler) { on_write_ = std::move(handler); };
+    void SetOnReadyWriteHandler(std::function<void(int)> handler) { on_write_ = std::move(handler); };
     // void SetErrorHandler(std::function<void(int)> handler) { on_error_ = std::move(handler); };
     void SetDisconnectHandler(std::function<void(int)> handler) { on_hangup_ = std::move(handler); };
 

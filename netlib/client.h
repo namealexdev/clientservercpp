@@ -16,7 +16,7 @@ public:
     void Connect();
     void Disconnect();
 
-    void SendToSocket(char* data, uint32_t size);
+    int SendToSocket(char* data, uint32_t size);
     void QueueAdd(char* data, int size);
     void QueueSend();
     void StartAsyncQueue();
@@ -30,10 +30,10 @@ private:
     EventDispatcher* dispatcher_ = 0;
     BaseEpoll epoll_;
 
-    char buffer[BUF_SIZE];
+    char buffer_[BUF_READ_SIZE];// for recv data from server
 
     // WARN: поток и мутекс нужны только для мультипотока
-    // TODO: change to lockfree
+    // TODO: change to lockfree (чтобы убрать mutex)
     std::thread* queue_th_;
     std::mutex queue_mtx_;
     std::queue<std::pair<char*,int>> queue_;

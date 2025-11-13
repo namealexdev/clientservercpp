@@ -2,7 +2,15 @@
 
 bool BaseEpoll::AddFd(int fd)
 {
-    const uint32_t events = EPOLLIN | EPOLLRDHUP;
+    /*
+     * IN - можно читать (recv)
+     * OUT - можно писать (send) по умолчанию всегда, обычно постоянно НЕ включают
+     * ET - edge-triggered (событие только при изменении состояния)
+     * ERR - ошибки сокета
+     * RDHUP - remote hang up (удаленная сторона закрыла соединение)
+     * HUP - hang up (полное закрытие соединения)
+     */
+    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET;
     epoll_event ev{.events = events, .data{.fd = fd}};
     if (epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
         // throw std::runtime_error("epoll_ctl add");
@@ -45,11 +53,10 @@ BaseEpoll::~BaseEpoll(){
 
 void BaseEpoll::ExecLoop()
 {
-    d("ExecLoop")
-    static epoll_event events[MAX_EVENTS];
+    static epoll_event events[EPOLL_MAX_EVENTS];
 
     while (!need_stop_) {
-        int nfds = epoll_wait(epfd_, events, MAX_EVENTS, EPOLL_TIMEOUT);
+        int nfds = epoll_wait(epfd_, events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
         if (nfds == -1) {
             d("epoll timeout")
             if (errno == EINTR) continue;
@@ -95,6 +102,14 @@ void BaseEpoll::ExecLoop()
                 // throw std::runtime_error("Unknown epoll event " + std::to_string(ev));
                 // ^-- уберите, если хотите продолжать работу, а не падать
             }
+
+
+            switch(ev){
+
+            default:
+                break;
+            }
+
         }
     }
     d("STOP ExecLoop")

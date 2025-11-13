@@ -56,7 +56,7 @@ public:
     // }
 
     // прокидываем методы в LightEpoll
-    virtual void SendToSocket(char* d, uint32_t sz) = 0;
+    virtual int SendToSocket(char* d, uint32_t sz) = 0;
     virtual void StartAsyncQueue() = 0;
     virtual void QueueAdd(char* d, int sz) = 0;
     virtual void QueueSend() = 0;

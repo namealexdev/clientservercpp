@@ -97,7 +97,8 @@ bool RecvMsg(int fd, void* buf, size_t size) {
 
 
 
-void SimpleClient::Connect(){
+void SimpleClient::Connect()
+{
     auto sock = create_socket_connect();
     if (sock < 0){
         state_ = ClientState::ERROR;
@@ -112,6 +113,7 @@ void SimpleClient::Connect(){
 
     state_ = ClientState::HANDSHAKE;
 
+    // это надо вынести кудато или вынести методы send recv (чтобы были общими)
     // отправляем сразу!
     // TODO(): load uuid
     uuid_ = generateUuid();
@@ -141,7 +143,7 @@ void SimpleClient::Disconnect(){
     epoll_.StopEpoll();
 }
 
-void SimpleClient::SendToSocket(char *data, uint32_t size){
+int SimpleClient::SendToSocket(char *data, uint32_t size){
 
     uint32_t net_size = htonl(static_cast<uint32_t>(size));
 
@@ -158,8 +160,11 @@ void SimpleClient::SendToSocket(char *data, uint32_t size){
     ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL);
     if (sent != size+sizeof(size)) {
         std::cerr << socket_ << " send(" << sent << ") failed: " << strerror(errno) << std::endl;
+    }else{
+        stats_.addBytes(sent);
     }
-    stats_.addBytes(sent);
+
+    return sent;
 }
 
 void SimpleClient::QueueAdd(char *data, int size){
@@ -168,11 +173,14 @@ void SimpleClient::QueueAdd(char *data, int size){
 }
 
 void SimpleClient::QueueSend(){
+    // надо ждать события чтобы продолжить, чтобы не грузился cpu ???
     std::lock_guard<std::mutex> lock(queue_mtx_);
     while(!queue_.empty()){
         auto el = queue_.front();
         queue_.pop();
-        SendToSocket(el.first, el.second);
+        if (SendToSocket(el.first, el.second) == -1){
+            break;
+        }
     }
 }
 
@@ -181,7 +189,7 @@ void SimpleClient::StartAsyncQueue()
     queue_th_ = new std::thread([&](){
         while (socket_ > 0){
             if (queue_.empty()){
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             QueueSend();
         }
@@ -200,7 +208,7 @@ void SimpleClient::handleData(){
     ssize_t n;
     // это не SubEpoll, тут не нужна статистика
     // std::cout << "2handle_socket_data " << n << std::endl;
-    n = recv(socket_, buffer, sizeof(buffer), 0);
+    n = recv(socket_, buffer_, sizeof(buffer_), 0);
     if (n > 0) {
         if (dispatcher_) {
             dispatcher_->onEvent(EventType::DataReceived, &n);

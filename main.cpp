@@ -8,7 +8,7 @@
 #include <libinclude/netlib.h>
 
 template <typename FactoryMode, int server_workers = 0>
-void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 10)
+void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 60)
 {
     std::cout << "START multiclient concurrency TEST" << std::endl;
     std::cout << "Clients: " << clients << ", Duration: " << test_duration_sec << "s" << std::endl;
@@ -66,13 +66,13 @@ void test_speed_concurrency(uint16_t port, int clients, int test_duration_sec = 
                 .server_port = port
             };
 
-            auto cli = factory->createClient(cli_conf);
+            std::unique_ptr<IClient> cli = factory->createClient(cli_conf);
             if (!cli) {
                 std::cerr << "Client " << client_id << " failed to create" << std::endl;
                 return;
             }
 
-            client_objects.emplace_back(cli);
+            client_objects.emplace_back(std::move(cli));
 
             // Connect to server
             cli->Connect();
