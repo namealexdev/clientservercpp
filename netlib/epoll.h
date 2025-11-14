@@ -19,6 +19,10 @@ public:
         handlers_[type] = std::move(handler);
     };
 
+    void unsetHandler(EventType type) {
+        handlers_.erase(type);
+    }
+
 private:
     std::unordered_map<EventType, std::function<void(void*)>> handlers_;
 };

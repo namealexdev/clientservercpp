@@ -10,6 +10,7 @@
 
 #include "libinclude/iserver.h"
 
+/*
 struct PacketParser {
 
     // union {
@@ -71,15 +72,98 @@ struct PacketParser {
         return payload_size > 0 &&
                payload_size + PACKET_HEADER_SIZE == pos_data + 1;
     }
+};*/
+
+struct PacketParser {
+    std::vector<char> data;           // Буфер для данных (заголовок + полезная нагрузка)
+    uint32_t payload_size = 0;        // Размер полезной нагрузки в хостовом порядке
+    uint32_t bytes_received = 0;      // Общее количество полученных байт
+    bool header_parsed = false;       // Флаг, что заголовок распарсен
+
+    inline void Reset() {
+        data.clear();
+        payload_size = 0;
+        bytes_received = 0;
+        header_parsed = false;
+    }
+
+    // Сохраняет данные пакета если они есть
+    // Возвращает количество оставшихся байт
+    int ParseDataPacket(const char* buf, int sz) {
+        int count_read = 0;
+
+        // Если заголовок еще не распарсен
+        if (!header_parsed) {
+            // Сколько байт нужно дочитать до полного заголовка
+            int header_needed = PACKET_HEADER_SIZE - bytes_received;
+            int can_read = std::min(sz, header_needed);
+
+            // Добавляем данные в вектор
+            data.insert(data.end(), buf, buf + can_read);
+            count_read += can_read;
+            bytes_received += can_read;
+
+            // Если заголовок полностью получен
+            if (bytes_received >= PACKET_HEADER_SIZE) {
+                // Извлекаем размер полезной нагрузки
+                uint32_t net_size;
+                memcpy(&net_size, data.data(), sizeof(net_size));
+                payload_size = ntohl(net_size);
+
+                // Валидация
+                // if (payload_size > PACKET_MAX_PAYLOAD_SIZE) {
+                //     std::cerr << "Invalid packet size: " << payload_size << std::endl;
+                //     Reset();
+                //     return -1; // Ошибка
+                // }
+
+                header_parsed = true;
+
+                data.resize(PACKET_HEADER_SIZE + payload_size);
+            }
+        }
+
+        // Если заголовок распарсен и есть еще данные для чтения
+        if (header_parsed && count_read < sz) {
+            const char* payload_start = buf + count_read;
+            int payload_remaining = payload_size - (bytes_received - PACKET_HEADER_SIZE);
+            int can_read = std::min(sz - count_read, payload_remaining);
+
+            // Добавляем полезную нагрузку
+            data.insert(data.end(), payload_start, payload_start + can_read);
+            count_read += can_read;
+            bytes_received += can_read;
+        }
+
+        return sz - count_read;
+    }
+
+    inline bool IsPacketReady() const {
+        return header_parsed &&
+               (bytes_received == PACKET_HEADER_SIZE + payload_size);
+    }
+
+    // Вспомогательные методы для доступа к данным
+    inline const char* GetPayloadData() const {
+        return data.data() + PACKET_HEADER_SIZE;
+    }
+
+    inline uint32_t GetPayloadSize() const {
+        return payload_size;
+    }
+
+    inline const std::vector<char>& GetFullPacket() const {
+        return data;
+    }
 };
 
 struct ClientData{
     // только для handshake?
-    enum ClientState {
-        HANDSHAKE,
-        DATA
-    } state;
-    std::array<uint8_t, 16> client_uuid;
+    // enum ClientState {
+    //     HANDSHAKE,
+    //     DATA
+    // } state;
+    // std::array<uint8_t, 16> client_uuid;
 
     Stats stats;
     // очередь пакетов для клиента?

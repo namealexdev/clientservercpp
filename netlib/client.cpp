@@ -90,7 +90,7 @@ SimpleClient::SimpleClient(ClientConfig config):
             dispatcher_->onEvent(EventType::WriteReady);
         }
         if (async_queue_send_){
-            send_queue_cv_.notify_all();
+            send_queue_cv_.notify_one();
         }else{
             state_ = ClientState::SENDING;
             if (QueueSendAll()){
@@ -203,6 +203,9 @@ int SimpleClient::SendToSocket(char *data, uint32_t size){
 void SimpleClient::QueueAdd(char *data, int size){
     std::lock_guard<std::mutex> lock(queue_mtx_);
     queue_.push(QueueItem{data, size, 0});
+    if (async_queue_send_) {
+        send_queue_cv_.notify_one();
+    }
 }
 
 bool SimpleClient::QueueSendAll(){
@@ -224,11 +227,13 @@ bool SimpleClient::queueSendAllUnsafe()
                                     remaining);
 
             if (sent == -1) {
+                state_ = ClientState::ERROR;
                 return false; // ошибка
             } else if (sent > 0) {
                 current_item.sent_bytes += sent;
             } else {
-                break; // не удалось отправить сейчас
+                // break; // не удалось отправить сейчас
+                return false; // выходим, но очередь не пуста
             }
         }
 
@@ -236,8 +241,6 @@ bool SimpleClient::queueSendAllUnsafe()
         // Если сообщение полностью отправлено
         if (current_item.sent_bytes >= current_item.size) {
             queue_.pop();
-        } else {
-            break; // не все байты отправлены, ждем следующего вызова
         }
     }
 
@@ -247,6 +250,7 @@ bool SimpleClient::queueSendAllUnsafe()
 // когда прилетает событие делаем notify
 void SimpleClient::SwitchAsyncQueue(bool enable)
 {
+    d("async queue " << enable)
     async_queue_send_ = enable;
     if (!async_queue_send_){
         if (queue_th_){
@@ -261,13 +265,15 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
         return;
     }
 
-    queue_th_ = new std::thread([&](){
+    queue_th_ = new std::thread([this](){
         std::unique_lock lock(queue_mtx_);
         while(async_queue_send_ && state_ != ClientState::DISCONNECTED) {
             // Если очередь пуста - ждем данных
             if (queue_.empty()) {
                 state_ = ClientState::WAITING;
-                send_queue_cv_.wait(lock, [this]() {
+
+                send_queue_cv_.wait(lock, [&]() {
+
                     return !async_queue_send_ ||
                            state_ == ClientState::DISCONNECTED ||
                            !queue_.empty();
@@ -285,7 +291,11 @@ void SimpleClient::AddHandlerEvent(EventType type, std::function<void (void *)> 
     if (!dispatcher_){
         dispatcher_ = new EventDispatcher;
     }
-    dispatcher_->setHandler(type, std::move(handler));
+    if (handler){
+        dispatcher_->unsetHandler(type);
+    }else{
+        dispatcher_->setHandler(type, std::move(handler));
+    }
 }
 
 // ответы от сервера (пока нету)

@@ -66,10 +66,12 @@ SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     IServer(std::move(config)), dispatcher_(e){
 
     epoll_.SetOnReadAcceptHandler([&](int fd) {
-        // d("  handle accept recv ")
+
         if (fd == listen_socket_) {
+            // d("  handle accept recv ")
             handleAccept();
         } else {
+            // d("  handle data ")
             // if (clients_[fd].state == ClientData::HANDSHAKE){
             //     handleHandshake(fd);
             // }else
@@ -154,7 +156,7 @@ void SimpleServer::handleAccept(){
 
         std::lock_guard<std::mutex> lock(clients_mtx_);
         clients_[client_fd].stats = std::move(st);
-        clients_[client_fd].state = ClientData::HANDSHAKE;
+        // clients_[client_fd].state = ClientData::HANDSHAKE;
     }
 }
 
@@ -179,57 +181,46 @@ void SimpleServer::handleAccept(){
 
 void SimpleServer::handleClientData(int fd)
 {
-    // ClientBuffer& buf = clients_[fd].buf;
-
-    d("-srv get " << ((clients_[fd].state == ClientData::HANDSHAKE)?"[handshake]":" [handle data]"))
-
-    while (true) {// для нескольких recv
+    while (true) {
         ssize_t n = recv(fd, buffer_, sizeof(buffer_), MSG_DONTWAIT);
         if (n <= 0) {
             if (errno == EAGAIN) return;
-            // handle_error(fd, n);
             pktReader_.Reset();
             removeClient(fd);
             return;
         }
-        while (n > 0){
-            n = pktReader_.ParseDataPacket(buffer_, n);
-            if (pktReader_.IsPacketReady()){
+        stats_.addBytes(n);
 
-                // все прочитали
-                // d("(end read pkt) recv: " << buf.payload_size << " bytes from fd " << fd);
-                // какая-то запись в очередь
+        int processed = 0;
+        while (processed < n) {
+            int remaining = pktReader_.ParseDataPacket(buffer_ + processed, n - processed);
+
+            if (remaining == -1) {
+                std::cerr << "Packet parsing error from fd " << fd << std::endl;
+                pktReader_.Reset();
+                removeClient(fd);
+                return;
+            }
+
+            if (pktReader_.IsPacketReady()) {
+                // d("Received packet of size " << pktReader_.GetPayloadSize() << " from fd " << fd);
+
                 if (dispatcher_) {
                     DataReceived d;
-                    d.data = pktReader_.data + PACKET_HEADER_SIZE;
-                    d.size = pktReader_.payload_size;
+                    d.data = const_cast<char*>(pktReader_.GetPayloadData());
+                    d.size = pktReader_.GetPayloadSize();
                     dispatcher_->onEvent(EventType::DataReceived, &d);
                 }
+
                 pktReader_.Reset();
+
+                // Обновляем счетчик обработанных байт
+                processed = n - remaining;
+            } else {
+                // Пакет еще не готов, выходим из внутреннего цикла
+                break;
             }
         }
-
-
-
-        // TODO(): можно ли тут без if?
-        // if (clients_[fd].state == ClientData::HANDSHAKE){
-        //     ClientHiMsg* pmsg = reinterpret_cast<ClientHiMsg*>(buf.payload.data());
-        //     clients_[fd].client_uuid = pmsg->uuid;
-
-        //     // TODO(): error
-
-        //     d("-srv end handshake. send answ. " << uuid_to_string(pmsg->uuid))
-
-        //     // TODO нормальная десерелизация!!! - пока ок
-        //     // TODO(): без size???
-        //     // restore if needed and need send to socket answer
-        //     ServerAnsHiMsg smsg;
-        //     smsg.client_mode = ServerAnsHiMsg::SEND;
-        //     smsg.client_uuid = pmsg->uuid;
-        //     send(fd, &smsg, sizeof(smsg), MSG_DONTWAIT);
-        // }
-
-
     }
 }
 

@@ -38,6 +38,7 @@ private:
     char buffer_[BUF_READ_SIZE];// for recv data from server
 
     // WARN: поток и мутекс нужны только для мультипотока
+    // sync push pop для потока
     // TODO: change to lockfree (чтобы убрать mutex)
     std::thread* queue_th_;
     std::mutex queue_mtx_;

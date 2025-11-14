@@ -47,7 +47,7 @@ void BaseEpoll::RemoveFd(int fd)
 // }
 
 void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
-    d("RunEpoll " << connectInLoop)
+    d("RunEpoll reconnect:" << connectInLoop)
     if (thLoop_){
         StopEpoll();
         thLoop_->join();
@@ -56,7 +56,7 @@ void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
     thLoop_ = std::make_unique<std::thread>([&, connectInLoop](){
         // d("start th " << connectInLoop)
         if (connectInLoop && on_hangup_){
-            d("reconnect enabled")
+            d("reconnect enable")
             on_hangup_(-2);
         }
         ExecLoop();

@@ -211,13 +211,23 @@ void server_app(){
 
     auto fac = std::make_unique<SinglethreadFactory>();
     ServerConfig srv_conf{
-        .host = "127.0.0.1",
         .port = 12345,
         .max_connections = 10
     };
     std::unique_ptr<IServer> srv = fac->createServer(srv_conf);
-    srv->StartListen();
+    if (!srv){
+        std::cerr << "Failed to create server " << std::endl;
+        return;
+    }
+    if (!srv->StartListen(2)) {
+        std::cerr << "Failed to start server. err:" << srv->GetLastError() << std::endl;
+        return;
+    }
 
+    while(1){
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        d("srv [" << srv->GetServerState() << "] clis:" << srv->CountClients() << " btr:" << srv->GetStats().getBitrate());
+    }
 }
 
 void client_app(){
@@ -227,7 +237,7 @@ void client_app(){
     ClientConfig cli_conf{
         .server_ip = "127.0.0.1",
         .server_port = 12345,
-        .auto_send = true,
+        .auto_send = false,
         .auto_reconnect = true
     };
 
@@ -262,21 +272,25 @@ void client_app(){
     cli->QueueAdd(data1.data(), data1.size());
     cli->QueueSendAll();// не блокирующий
 
-
     // поэтому ждем
     std::atomic_bool stop = false;
     cli->AddHandlerEvent(EventType::WriteReady, [&](void* data){
-        // d("write ready")
+        d("write ready 1")
         stop = true;
     });
-    while(!stop || cli->GetClientState() != "WAITING"){
+    while(cli->GetClientState() != "WAITING"){
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        d("1 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+        d("1 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate() << " " << stop);
     }
-    stop = false;
+
     d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
 
     // v2
+    stop = false;
+    cli->AddHandlerEvent(EventType::WriteReady, [&](void* data){
+        d("write ready 2")
+        stop = true;
+    });
     cli->SwitchAsyncQueue(1);// надо ли динамически возможность включать?
 
     cli->QueueAdd(data1.data(), data1.size());
@@ -284,13 +298,37 @@ void client_app(){
     cli->QueueAdd(data3.data(), data3.size());
     cli->QueueAdd(data1.data(), data1.size());
 
-    while(!stop || cli->GetClientState() != "WAITING"){
+    while(cli->GetClientState() != "WAITING"){
         std::this_thread::sleep_for(std::chrono::seconds(1));
         d("2 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
     }
     d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
-
     d("after send");
+}
+
+void client_stress(){
+    auto fac = std::make_unique<SinglethreadFactory>();
+    ClientConfig cli_conf{
+        .server_ip = "127.0.0.1",
+        .server_port = 12345,
+        .auto_send = true,
+        .auto_reconnect = true
+    };
+
+    std::unique_ptr<IClient> cli = fac->createClient(cli_conf);
+
+    cli->Start();
+    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+
+    std::vector<char> data100(1000'000'000, 'A');// 1Gb
+    while (1){
+        for (int i = 0; i < 100/8; i++){
+            cli->QueueAdd(data100.data(), data100.size());
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // cli->QueueSendAll();
+        d("[stress] cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+    }
 }
 // Пример использования:
 int main() {
@@ -304,7 +342,13 @@ int main() {
     // std::cout << "\n=== MULTITHREAD TEST ===" << std::endl;
     // test_speed_concurrency<MultithreadFactory>(12346, 10, 5);
 
-    server_app();
+    new std::thread([](){
+        server_app();
+    });
+
+    client_stress();
+
+    // server_app();
 
 
     return 0;
