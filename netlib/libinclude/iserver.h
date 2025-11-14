@@ -25,6 +25,7 @@ enum class ServerState : uint8_t{
 class IServer{
 public:
     IServer(ServerConfig&& c) : conf_(std::move(c)) {};
+    virtual ~IServer() = default;
     virtual bool StartListen(int num_workers = 0) = 0; // wait accept
     virtual void Stop() = 0;
     virtual int CountClients() = 0;

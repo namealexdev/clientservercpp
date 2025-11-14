@@ -6,10 +6,12 @@
 #include "stats.h"
 
 struct ClientConfig{
-    string host;
+    string host;// to bind
     string server_ip = "127.0.0.1";
     uint16_t server_port = 12345;
 
+    bool auto_send = false;
+    bool auto_reconnect = false;
     // bool auto_reconnect = false;
     // int serialization_ths = 1;
     // int send_buffer_size = 1 * 1024 * 1024; // 1 MiB
@@ -18,7 +20,7 @@ struct ClientConfig{
 
 enum class ClientState : uint8_t{
     DISCONNECTED = 0, // default
-    RECONNECTED,
+    CONNECTING,
     HANDSHAKE,
     WAITING,
     SENDING,
@@ -43,9 +45,11 @@ enum class ClientState : uint8_t{
 class IClient {
 public:
     IClient(ClientConfig&& c) : conf_(std::move(c)) {};
+    virtual ~IClient() = default;
 
-    virtual void Connect() = 0;
-    virtual void Disconnect() = 0;
+    virtual void Start() = 0;
+    virtual void StartWaitConnect() = 0;
+    virtual void Stop() = 0;
 
     string GetClientState();
     // Wait until the client connects (WAITING or SENDING) or ERROR/timeout occurs.
@@ -57,9 +61,9 @@ public:
 
     // прокидываем методы в LightEpoll
     virtual int SendToSocket(char* d, uint32_t sz) = 0;
-    virtual void StartAsyncQueue() = 0;
+    virtual void SwitchAsyncQueue(bool enable) = 0;
     virtual void QueueAdd(char* d, int sz) = 0;
-    virtual void QueueSend() = 0;
+    virtual bool QueueSendAll() = 0;
 
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 

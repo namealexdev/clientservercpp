@@ -13,18 +13,23 @@ public:
     SimpleClient(ClientConfig config);
     ~SimpleClient();
 
-    void Connect();
-    void Disconnect();
+    // чтобы сразу начинать и автоматом делать реконект (асинхронный)
+    void Start();
+    // sync connect и start
+    void StartWaitConnect();
+    void Stop();
 
     int SendToSocket(char* data, uint32_t size);
     void QueueAdd(char* data, int size);
-    void QueueSend();
-    void StartAsyncQueue();
+    // sync send
+    bool QueueSendAll();
+    void SwitchAsyncQueue(bool enable);
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
 private:
     void handleData();
+    void reconnect();
 
     int socket_ = -1;
     EventDispatcher* dispatcher_ = 0;
@@ -36,7 +41,16 @@ private:
     // TODO: change to lockfree (чтобы убрать mutex)
     std::thread* queue_th_;
     std::mutex queue_mtx_;
-    std::queue<std::pair<char*,int>> queue_;
+    struct QueueItem {
+        char* data;
+        int size = 0;
+        int sent_bytes = 0;  // сколько байт уже отправлено
+    };
+    std::queue<QueueItem> queue_;
+    std::condition_variable send_queue_cv_;
+    bool async_queue_send_ = false;
+
+    bool queueSendAllUnsafe();
 };
 
 

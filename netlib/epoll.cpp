@@ -10,14 +10,14 @@ bool BaseEpoll::AddFd(int fd)
      * RDHUP - remote hang up (удаленная сторона закрыла соединение)
      * HUP - hang up (полное закрытие соединения)
      */
-    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET;
+    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET | EPOLLOUT;
     epoll_event ev{.events = events, .data{.fd = fd}};
     if (epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
         // throw std::runtime_error("epoll_ctl add");
         std::cout << "fail epoll_ctl add " << fd << " error: " << strerror(errno)<< std::endl;
         return false;
     }
-    d("addfd " << fd)
+    // d("addfd " << fd)
     return true;
 }
 
@@ -27,13 +27,40 @@ void BaseEpoll::RemoveFd(int fd)
     close(fd);
 }
 
-void BaseEpoll::RunEpoll(){
+// void BaseEpoll::StartEpoll(bool autoreconnect)
+// {
+//     if (thLoop_){
+//         StopEpoll();
+//         thLoop_->join();
+//         thLoop_.reset();
+//     }
+//     thLoop_ = std::make_unique<std::thread>([&](){
+//         while(!need_stop_){
+//             auto sock = create_socket_connect();
+//             if (sock < 0){
+//                 continue;
+//             }
+//         }
+//         AddFd(sock);
+//         ExecLoop();
+//     });
+// }
+
+void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
+    d("RunEpoll " << connectInLoop)
     if (thLoop_){
         StopEpoll();
         thLoop_->join();
         thLoop_.reset();
     }
-    thLoop_ = std::make_unique<std::thread>([&](){ExecLoop();});
+    thLoop_ = std::make_unique<std::thread>([&, connectInLoop](){
+        // d("start th " << connectInLoop)
+        if (connectInLoop && on_hangup_){
+            d("reconnect enabled")
+            on_hangup_(-2);
+        }
+        ExecLoop();
+    });
 }
 
 void BaseEpoll::StopEpoll(){
@@ -48,6 +75,11 @@ BaseEpoll::BaseEpoll(){
 BaseEpoll::~BaseEpoll(){
     if (epfd_ >= 0) {
         close(epfd_);
+    }
+    if (thLoop_){
+        StopEpoll();
+        thLoop_->join();
+        thLoop_.reset();
     }
 }
 
@@ -70,8 +102,6 @@ void BaseEpoll::ExecLoop()
 
             // d(" " << fd << " " << std::hex << ev << std::dec)
 
-            bool handled = false;
-
             if (ev & (EPOLLHUP | EPOLLRDHUP)) {
                 if (ev & EPOLLERR) {
                     int error = 0;
@@ -82,32 +112,20 @@ void BaseEpoll::ExecLoop()
                     }
                 }
                 if (on_hangup_) on_hangup_(fd);
-                handled = true;
-            }
-
-            if (ev & EPOLLIN) {
-                if (!handled) {  // только если не было HUP/RDHUP
+                continue;
+            } else {  // Только если НЕ было HUP/RDHUP
+                if (ev & EPOLLIN) {
                     if (on_read_) on_read_(fd);
                 }
-                handled = true;
+                if (ev & EPOLLOUT) {
+                    if (on_write_) on_write_(fd);
+                }
+                continue;
             }
 
-            if (ev & EPOLLOUT) {
-                if (on_write_) on_write_(fd);
-                handled = true;
-            }
-
-            if (!handled) {
-                d("Unknown event combination: 0x" << std::hex << ev << " on fd " << fd << std::dec);
-                // throw std::runtime_error("Unknown epoll event " + std::to_string(ev));
-                // ^-- уберите, если хотите продолжать работу, а не падать
-            }
-
-
-            switch(ev){
-
-            default:
-                break;
+            // Проверка на неизвестные события (если не попало ни в одно условие)
+            if (!(ev & (EPOLLHUP | EPOLLRDHUP | EPOLLIN | EPOLLOUT))) {
+                d("Unknown event: 0x" << std::hex << ev << " on fd " << fd << std::dec);
             }
 
         }

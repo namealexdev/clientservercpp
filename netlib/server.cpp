@@ -77,11 +77,11 @@ SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
         }
     });
 
-    epoll_.SetDisconnectHandler([&](int fd) {
+    epoll_.SetOnDisconnectHandler([&](int fd) {
         // d("(WARN) server epoll before disconnect")
         if (fd == listen_socket_) {
             Stop();
-        } else {
+        } else if (fd > 0){
             removeClient(fd);
         }
         // d("(WARN) accept_epoll after disconnect")
@@ -252,10 +252,10 @@ MultithreadServer::MultithreadServer(ServerConfig config) :
     //     state_ = ServerState::ERROR;
     // });
 
-    accept_epoll_.SetDisconnectHandler([&](int fd) {
-        // d("(WARN) server accept_epoll before disconnect")
-        Stop();
-        // d("(WARN) server accept_epoll after disconnect")
+    accept_epoll_.SetOnDisconnectHandler([&](int fd) {
+        if (fd > 0){
+            Stop();
+        }
     });
 
     // accept_epoll_.SetOnReadyWriteHandler()

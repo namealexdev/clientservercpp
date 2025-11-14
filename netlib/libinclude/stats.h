@@ -31,7 +31,9 @@ private:
 enum class EventType {
     ClientConnected,
     ClientDisconnected,
-    DataReceived
+    DataReceived,
+
+    WriteReady
 };
 struct DataReceived{
     int size;
