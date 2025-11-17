@@ -166,9 +166,9 @@ struct ClientData{
     // std::array<uint8_t, 16> client_uuid;
 
     Stats stats;
+    PacketParser pktReader_;
     // очередь пакетов для клиента?
 };
-
 
 
 class SimpleServer : public IServer{
@@ -184,6 +184,24 @@ public:
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
+    double GetBitrate(){
+
+        auto& stats = GetStats();
+        stats.calcBitrate();
+        // d("sim get btr " << stats.calcBitrate())
+        return stats.getBitrate();
+    };
+    std::vector<std::unique_ptr<IServer>>* GetWorkers(){
+        return nullptr;
+    };
+    std::vector<Stats*> GetClientsStats(){
+        std::vector<Stats*> vec;
+        for (auto& c: clients_){
+            vec.emplace_back(&c.second.stats);
+        }
+        return vec;
+    }
+
 private:
     void handleAccept(); // принимает клиентов
     void handleClientData(int fd); // обрабатывает данные от клиента
@@ -198,7 +216,7 @@ private:
     //for add client (from other thread when MultithreadServer) and erace
     std::mutex clients_mtx_;
 
-    PacketParser pktReader_;
+
 };
 
 class MultithreadServer : public IServer{
@@ -209,6 +227,34 @@ public:
     void Stop();
     int CountClients();
 
+    void AddClientFd(int fd, const Stats &st){
+
+        accept_epoll_.AddFd(fd);
+        worker_client_counts_[0] ++;
+        // preClient_socks_.push(std::make_pair(fd, std::move(st)));
+    }
+
+    double GetBitrate(){
+        // d("multi get btr:")
+        double bps = 0;
+        int num_worker = 1;
+        for (auto &w: workers_){
+            std::vector<Stats*> stats = w->GetClientsStats();
+            for(auto& c: stats){
+                d(num_worker++ << "-  " << c->ip << " " << c->getCalcBitrate());
+                bps += c->getBitrate();
+            }
+        }
+        d("full " << Stats::formatBitrate(bps))
+        return bps;
+    };
+    std::vector<std::unique_ptr<IServer>>* GetWorkers(){
+        return &workers_;
+    };
+    std::vector<Stats*> GetClientsStats(){
+        return {};
+    }
+
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
 private:
@@ -218,8 +264,8 @@ private:
     EventDispatcher* dispatcher_ = 0;
     BaseEpoll accept_epoll_; // только для accept
 
-    std::vector<std::unique_ptr<SimpleServer>> workers_;
-    std::vector<int> worker_client_counts_; // для балансировки(чтобы без atomic)
+    std::vector<std::unique_ptr<IServer>> workers_;
+    std::vector<std::atomic_int> worker_client_counts_; // для балансировки(чтобы без atomic)
 };
 
 #endif // SERVER_H

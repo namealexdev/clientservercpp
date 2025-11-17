@@ -10,7 +10,11 @@ bool BaseEpoll::AddFd(int fd)
      * RDHUP - remote hang up (удаленная сторона закрыла соединение)
      * HUP - hang up (полное закрытие соединения)
      */
-    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET | EPOLLOUT;
+    // EPOLLOUT c EPOLLET не используем, иначе надо писать до последнего иначе OUT не приходит
+    const uint32_t ev_client = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLOUT;
+    const uint32_t ev_server = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET | EPOLLOUT;
+
+    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLOUT;
     epoll_event ev{.events = events, .data{.fd = fd}};
     if (epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
         // throw std::runtime_error("epoll_ctl add");
@@ -56,7 +60,7 @@ void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
     thLoop_ = std::make_unique<std::thread>([&, connectInLoop](){
         // d("start th " << connectInLoop)
         if (connectInLoop && on_hangup_){
-            d("reconnect enable")
+            // d("reconnect enable")
             on_hangup_(-2);
         }
         ExecLoop();

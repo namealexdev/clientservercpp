@@ -2,6 +2,7 @@
 #define ISERVER_H
 
 #include <functional>
+#include <memory>
 #include <stdint.h>
 #include "stats.h"
 
@@ -30,6 +31,12 @@ public:
     virtual void Stop() = 0;
     virtual int CountClients() = 0;
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
+
+    virtual double GetBitrate() = 0;
+    virtual std::vector<std::unique_ptr<IServer>>* GetWorkers() = 0;
+    virtual std::vector<Stats*> GetClientsStats() = 0;
+    virtual void AddClientFd(int fd, const Stats &st) = 0;
+
 
     Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}

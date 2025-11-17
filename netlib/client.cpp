@@ -5,7 +5,8 @@
 int IClient::create_socket_connect()
 {
     int sock;
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
         last_error_ = "socket failed";
         return -1;
     }
@@ -90,7 +91,7 @@ SimpleClient::SimpleClient(ClientConfig config):
             dispatcher_->onEvent(EventType::WriteReady);
         }
         if (async_queue_send_){
-            send_queue_cv_.notify_one();
+            // send_queue_cv_.notify_one();
         }else{
             state_ = ClientState::SENDING;
             if (QueueSendAll()){
@@ -184,15 +185,15 @@ int SimpleClient::SendToSocket(char *data, uint32_t size){
     msg.msg_iov = iov;
     msg.msg_iovlen = 2;
 
-    // d("sendmsg " << size+ sizeof(size));
-    ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
 
+    ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+// d("sendmsg " << size+ sizeof(size));
     if (sent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             // std::cerr << "sock blocked" << std::endl;
             return 0; // сокет временно недоступен для записи
         }
-        std::cerr << sent << " send failed: " << strerror(errno) << std::endl;
+        // std::cerr << sent << " send failed: " << strerror(errno) << std::endl;
         return -1;
     }
 
@@ -203,9 +204,9 @@ int SimpleClient::SendToSocket(char *data, uint32_t size){
 void SimpleClient::QueueAdd(char *data, int size){
     std::lock_guard<std::mutex> lock(queue_mtx_);
     queue_.push(QueueItem{data, size, 0});
-    if (async_queue_send_) {
-        send_queue_cv_.notify_one();
-    }
+    // if (async_queue_send_) {
+    //     // send_queue_cv_.notify_one();
+    // }
 }
 
 bool SimpleClient::QueueSendAll(){
@@ -255,7 +256,7 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     if (!async_queue_send_){
         if (queue_th_){
             // stop
-            send_queue_cv_.notify_all();
+            // send_queue_cv_.notify_all();
             if (queue_th_->joinable()){
                 queue_th_->join();
             }
@@ -266,23 +267,27 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     }
 
     queue_th_ = new std::thread([this](){
-        std::unique_lock lock(queue_mtx_);
+        // std::unique_lock lock(queue_mtx_);
         while(async_queue_send_ && state_ != ClientState::DISCONNECTED) {
             // Если очередь пуста - ждем данных
             if (queue_.empty()) {
-                state_ = ClientState::WAITING;
+                if (state_ == ClientState::SENDING){
+                    state_ = ClientState::WAITING;
+                }
 
-                send_queue_cv_.wait(lock, [&]() {
+                // send_queue_cv_.wait(lock, [&]() {
 
-                    return !async_queue_send_ ||
-                           state_ == ClientState::DISCONNECTED ||
-                           !queue_.empty();
-                });
+                //     return !async_queue_send_ ||
+                //            state_ == ClientState::DISCONNECTED ||
+                //            !queue_.empty();
+                // });
                 continue;
             }
             state_ = ClientState::SENDING;
 
+            queue_mtx_.lock();
             queueSendAllUnsafe();
+            queue_mtx_.unlock();
         }
     });
 }

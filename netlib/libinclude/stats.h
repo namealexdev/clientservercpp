@@ -12,20 +12,23 @@ using std::string;
 class Stats {
 public:
     std::string ip;
-    double last_bps = 0;
 
     void addBytes(size_t bytes);
 
     // скорость за интервал с последнего вызова
-    string getBitrate();
+    double calcBitrate();
+    double getBitrate();
+    string getCalcBitrate();
 
+    static std::string formatBitrate(double bps, bool bytes = true);
 private:
-    uint64_t total_bytes;
+    uint64_t total_bytes = 0;
     uint64_t last_bytes = 0;
     std::chrono::steady_clock::time_point last_time{};
+    double last_bps = 0;
 
     // false = bits
-    std::string formatBitrate(double bps, bool bytes = true);
+
 };
 
 enum class EventType {

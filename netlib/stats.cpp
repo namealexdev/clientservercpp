@@ -5,7 +5,34 @@ void Stats::addBytes(size_t bytes)
     total_bytes += bytes;
 }
 
-std::string Stats::getBitrate()
+double Stats::calcBitrate()
+{
+    auto now = std::chrono::steady_clock::now();
+
+    // Защита от первого вызова
+    if (last_time.time_since_epoch().count() == 0) {
+        last_time = now;
+        last_bytes = total_bytes;
+        return 0;
+    }
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time).count();
+    if (elapsed <= 0.0) return 0;
+
+    uint64_t delta = total_bytes - last_bytes;
+
+    // Обновляем состояние
+    last_time = now;
+    last_bytes = total_bytes;
+
+    // double bps = (delta * 8.0) / elapsed; // bits per second
+    double btps = (delta) / elapsed; // bytes per second
+    last_bps = btps;
+    return last_bps;
+}
+
+
+std::string Stats::getCalcBitrate()
 {
     auto now = std::chrono::steady_clock::now();
 
@@ -29,6 +56,11 @@ std::string Stats::getBitrate()
     double btps = (delta) / elapsed; // bytes per second
     last_bps = btps;
     return formatBitrate(btps) + " " + formatBitrate(bps, false);
+}
+
+double Stats::getBitrate()
+{
+    return last_bps;
 }
 
 std::string Stats::formatBitrate(double bps, bool bytes)

@@ -48,7 +48,7 @@ private:
         int sent_bytes = 0;  // сколько байт уже отправлено
     };
     std::queue<QueueItem> queue_;
-    std::condition_variable send_queue_cv_;
+    // std::condition_variable send_queue_cv_;
     bool async_queue_send_ = false;
 
     bool queueSendAllUnsafe();

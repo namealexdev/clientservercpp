@@ -5,7 +5,8 @@
 int IServer::create_listen_socket()
 {
     int sock;
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
         last_error_ = "socket failed";
         return -1;
     }
@@ -22,7 +23,7 @@ int IServer::create_listen_socket()
     }
 
     int opt = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
         last_error_ = "setsockopt reuseaddr failed";
         close(sock);
         return -1;
@@ -181,38 +182,42 @@ void SimpleServer::handleAccept(){
 
 void SimpleServer::handleClientData(int fd)
 {
+    ClientData& cli = clients_[fd];
     while (true) {
         ssize_t n = recv(fd, buffer_, sizeof(buffer_), MSG_DONTWAIT);
         if (n <= 0) {
             if (errno == EAGAIN) return;
-            pktReader_.Reset();
+            cli.pktReader_.Reset();
             removeClient(fd);
             return;
         }
-        stats_.addBytes(n);
+        // stats_.addBytes(n);
+        cli.stats.addBytes(n);
+        // d("add bytes:" << n)
 
         int processed = 0;
         while (processed < n) {
-            int remaining = pktReader_.ParseDataPacket(buffer_ + processed, n - processed);
+            int remaining = cli.pktReader_.ParseDataPacket(buffer_ + processed, n - processed);
 
-            if (remaining == -1) {
+            if (n <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) return;
                 std::cerr << "Packet parsing error from fd " << fd << std::endl;
-                pktReader_.Reset();
+                cli.pktReader_.Reset();
                 removeClient(fd);
                 return;
             }
 
-            if (pktReader_.IsPacketReady()) {
+            if (cli.pktReader_.IsPacketReady()) {
                 // d("Received packet of size " << pktReader_.GetPayloadSize() << " from fd " << fd);
 
                 if (dispatcher_) {
                     DataReceived d;
-                    d.data = const_cast<char*>(pktReader_.GetPayloadData());
-                    d.size = pktReader_.GetPayloadSize();
+                    d.data = const_cast<char*>(cli.pktReader_.GetPayloadData());
+                    d.size = cli.pktReader_.GetPayloadSize();
                     dispatcher_->onEvent(EventType::DataReceived, &d);
                 }
 
-                pktReader_.Reset();
+                cli.pktReader_.Reset();
 
                 // Обновляем счетчик обработанных байт
                 processed = n - remaining;
@@ -264,17 +269,34 @@ bool MultithreadServer::StartListen(int num_workers){
 
     state_ = ServerState::WAITING;
 
-    worker_client_counts_.resize(num_workers, 0);
+    // worker_client_counts_.resize(num_workers, 0);
+    // for (int i = 0; i < num_workers; ++i) {
+    //     auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
+    //     worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
+    //         --worker_client_counts_[i];
+    //     });
+    //     worker->StartWait();
+    //     workers_.push_back(std::move(worker));
+    //     worker_client_counts_[i] = 0;
+    //     // worker_client_counts_.push_back(0);
+    // }
+    worker_client_counts_.clear();
+    // worker_client_counts_.reserve(num_workers);
+    // worker_client_counts_.resize(num_workers);
+    worker_client_counts_ = std::vector<std::atomic<int>>(num_workers);
+
+
     for (int i = 0; i < num_workers; ++i) {
+        // worker_client_counts_.emplace_back(0);
+
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
         worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
-            --worker_client_counts_[i];
+            worker_client_counts_[i]--;
         });
         worker->StartWait();
         workers_.push_back(std::move(worker));
-        worker_client_counts_[i] = 0;
-        // worker_client_counts_.push_back(0);
     }
+
 
     listen_socket_ = sock;
     accept_epoll_.AddFd(sock);
@@ -288,10 +310,25 @@ void MultithreadServer::Stop(){
     state_ = ServerState::STOPPED;
     accept_epoll_.RemoveFd(listen_socket_);
     accept_epoll_.StopEpoll();
+
+    //>?????? точно нужно
+    for (auto &w : workers_) {
+        w->Stop();
+    }
+    // обнулить worker_client_counts_ ???
+
+    // for (auto &th : worker_threads_) {
+    //     if (th.joinable()) th.join();
+    // }
 }
 
 int MultithreadServer::CountClients(){
-    return std::accumulate(worker_client_counts_.begin(), worker_client_counts_.end(), 0);
+    // return std::accumulate(worker_client_counts_.begin(), worker_client_counts_.end(), 0);
+    int total = 0;
+    for (auto &c : worker_client_counts_) {
+        total += c.load();
+    }
+    return total;
 }
 
 void MultithreadServer::AddHandlerEvent(EventType type, std::function<void (void *)> handler)
@@ -303,7 +340,7 @@ void MultithreadServer::AddHandlerEvent(EventType type, std::function<void (void
 }
 
 void MultithreadServer::handleAccept(int fd){
-    // d("srv accept " << fd << " " << listen_socket_)
+    d("srv accept " << fd << " " << listen_socket_)
     // if (fd != listen_socket_){//??
     //     return;
     // }
@@ -325,7 +362,14 @@ void MultithreadServer::handleAccept(int fd){
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
         // Находим воркер с минимальным числом клиентов
-        auto it = std::min_element(worker_client_counts_.begin(), worker_client_counts_.end());
+        // auto it = std::min_element(worker_client_counts_.begin(), worker_client_counts_.end());
+        auto it = std::min_element(
+            worker_client_counts_.begin(),
+            worker_client_counts_.end(),
+            [](const std::atomic<int>& a, const std::atomic<int>& b) {
+                return a.load() < b.load();
+            }
+            );
         int idx = std::distance(worker_client_counts_.begin(), it);
 
         d("accept " << st.ip << " min:" << idx)

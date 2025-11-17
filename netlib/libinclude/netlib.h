@@ -9,6 +9,7 @@
 // factory
 class INetworkFactory{
 public:
+    virtual ~INetworkFactory() = default;
     virtual std::unique_ptr<IServer> createServer(ServerConfig conf) = 0;
     virtual std::unique_ptr<IClient> createClient(ClientConfig conf) = 0;
 };

@@ -28,7 +28,7 @@ constexpr int PACKET_HEADER_SIZE = 4;
 // constexpr uint32_t PACKET_MAX_PAYLOAD_SIZE = 16 * 1024 * 1024; // 16MB защита
 // constexpr size_t PACKET_MAX_SIZE = PACKET_HEADER_SIZE + PACKET_MAX_PAYLOAD_SIZE;
 
-#define d(x) std::cout << x << " \t(" << __FUNCTION__ << " " << __LINE__ << ")\n";
+#define d(x) std::cout << x << " \t(" << __FUNCTION__ << " " << __LINE__ << ")" << std::endl;
 // #define d(x)
 
 #endif // CONST_H
