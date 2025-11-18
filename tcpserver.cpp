@@ -19,10 +19,10 @@ void signal_handler(int signal) {
 void server_app(){
     signal(SIGINT, signal_handler);
 
-    std::cout << "=== SERVER TEST ===" << std::endl;
+    std::cout << "=== multi SERVER TEST ===" << std::endl;
 
     //MultithreadFactory SinglethreadFactory
-    auto fac = std::make_unique<SinglethreadFactory>();
+    auto fac = std::make_unique<MultithreadFactory>();
     ServerConfig srv_conf{
         .port = 12345,
         .max_connections = 10

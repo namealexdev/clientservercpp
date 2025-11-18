@@ -70,6 +70,9 @@ SimpleClient::SimpleClient(ClientConfig config):
 
     epoll_.SetOnReconnectHandler([&](){
         reconnect();
+        if (conf_.auto_send){
+            SwitchAsyncQueue(conf_.auto_send);
+        }
     });
 
     epoll_.SetOnDisconnectHandler([&](int fd){
@@ -101,8 +104,7 @@ SimpleClient::SimpleClient(ClientConfig config):
             }
         }
     });
-
-    if (conf_.auto_send){
+    if (!conf_.auto_reconnect && conf_.auto_send){
         SwitchAsyncQueue(conf_.auto_send);
     }
 }
@@ -175,7 +177,7 @@ int SimpleClient::SendToSocket(char *data, uint32_t size){
     msg.msg_iov = iov;
     msg.msg_iovlen = 2;
 
-    d("SendToSocket")
+    // d("SendToSocket")
     ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
     // d("sendmsg " << size+ sizeof(size));
 
@@ -242,6 +244,10 @@ bool SimpleClient::queueSendAllUnsafe()
 // когда прилетает событие делаем notify
 void SimpleClient::SwitchAsyncQueue(bool enable)
 {
+    if (async_queue_send_ && enable){
+        return;
+    }
+
     d("async queue " << enable)
     async_queue_send_ = enable;
     if (!async_queue_send_){
@@ -259,36 +265,24 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
 
     queue_th_ = new std::thread([this](){
         // std::unique_lock lock(queue_mtx_);
+        d("queue_th_ th start " << async_queue_send_ << " " << (int)state_ << " " << (async_queue_send_ && state_ != ClientState::DISCONNECTED))
         while(async_queue_send_ && state_ != ClientState::DISCONNECTED) {
-            if (socket_ <= 0 || (state_ != ClientState::WAITING && state_ != ClientState::SENDING)) {
+            if (socket_ <= 0|| (state_ != ClientState::WAITING && state_ != ClientState::SENDING)) {
                 continue;
             }
-            // if (socket_ <= 0){
-            //     continue;
-            // }
-            // if (!(state_ == ClientState::WAITING || state_ == ClientState::SENDING)){
-            //     //ff=t tf=f ft=f tt=f
-            //     // то есть если любое кроме WAITING и SENDING
-            //     continue;
-            // }
             // Если очередь пуста - ждем данных
             if (queue_.empty()) {
                 if (state_ == ClientState::SENDING){
                     state_ = ClientState::WAITING;
                 }
-
-                // send_queue_cv_.wait(lock, [&]() {
-
-                //     return !async_queue_send_ ||
-                //            state_ == ClientState::DISCONNECTED ||
-                //            !queue_.empty();
-                // });
                 continue;
             }
             state_ = ClientState::SENDING;
 
+
             QueueSendAll();
         }
+        d("----queue_th_ th end")
     });
 }
 

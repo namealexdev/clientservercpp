@@ -66,6 +66,7 @@ string IServer::GetServerState()
 SimpleServer::SimpleServer(ServerConfig config, EventDispatcher *e) :
     IServer(std::move(config)), dispatcher_(e){
 
+    d("SimpleServer")
     epoll_.SetOnReadAcceptHandler([&](int fd) {
 
         if (fd == listen_socket_) {
@@ -274,6 +275,7 @@ void SimpleServer::removeClient(int fd){
 
 MultithreadServer::MultithreadServer(ServerConfig config) :
     IServer(std::move(config)){
+    d("MultithreadServer")
     accept_epoll_.SetOnReadAcceptHandler([&](int fd) { handleAccept(fd); });
     // accept_epoll_.SetErrorHandler([&](int fd) {
     //     state_ = ServerState::ERROR;
@@ -320,6 +322,7 @@ bool MultithreadServer::StartListen(int num_workers){
     for (int i = 0; i < num_workers; ++i) {
         // worker_client_counts_.emplace_back(0);
 
+        d("create worker " << i)
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
         worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
             worker_client_counts_[i]--;
