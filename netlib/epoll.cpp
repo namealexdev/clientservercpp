@@ -11,8 +11,8 @@ bool BaseEpoll::AddFd(int fd)
      * HUP - hang up (полное закрытие соединения)
      */
     // EPOLLOUT c EPOLLET не используем, иначе надо писать до последнего иначе OUT не приходит
-    const uint32_t ev_client = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLOUT;
-    const uint32_t ev_server = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET | EPOLLOUT;
+    // const uint32_t ev_client = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLOUT;
+    // const uint32_t ev_server = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET | EPOLLOUT;
 
     const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLOUT;
     epoll_event ev{.events = events, .data{.fd = fd}};
@@ -31,25 +31,6 @@ void BaseEpoll::RemoveFd(int fd)
     close(fd);
 }
 
-// void BaseEpoll::StartEpoll(bool autoreconnect)
-// {
-//     if (thLoop_){
-//         StopEpoll();
-//         thLoop_->join();
-//         thLoop_.reset();
-//     }
-//     thLoop_ = std::make_unique<std::thread>([&](){
-//         while(!need_stop_){
-//             auto sock = create_socket_connect();
-//             if (sock < 0){
-//                 continue;
-//             }
-//         }
-//         AddFd(sock);
-//         ExecLoop();
-//     });
-// }
-
 void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
     d("RunEpoll reconnect:" << connectInLoop)
     if (thLoop_){
@@ -59,9 +40,9 @@ void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
     }
     thLoop_ = std::make_unique<std::thread>([&, connectInLoop](){
         // d("start th " << connectInLoop)
-        if (connectInLoop && on_hangup_){
+        if (connectInLoop && on_reconnect_){
             // d("reconnect enable")
-            on_hangup_(-2);
+            on_reconnect_();
         }
         ExecLoop();
     });

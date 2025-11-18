@@ -38,7 +38,7 @@ public:
     virtual void AddClientFd(int fd, const Stats &st) = 0;
 
 
-    Stats& GetStats(){return stats_;}
+    // Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}
     string GetServerState();
 
@@ -60,7 +60,7 @@ protected:
 
     ServerConfig conf_;
     string last_error_;
-    Stats stats_;
+    // Stats stats_;
 
     // std::mutex state_mtx_;
     // std::condition_variable state_cv_;

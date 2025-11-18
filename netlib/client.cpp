@@ -64,15 +64,16 @@ SimpleClient::SimpleClient(ClientConfig config):
 
     epoll_.SetOnReadAcceptHandler([&](int fd) {
         // accept тут нету
+        assert(socket_ == fd);
         handleData();
+    });
+
+    epoll_.SetOnReconnectHandler([&](){
+        reconnect();
     });
 
     epoll_.SetOnDisconnectHandler([&](int fd){
         // d("disconnect handle " << fd)
-        if (fd == -2){// connect in loop before start
-            reconnect();
-            return ;
-        }
         if (fd == socket_ && conf_.auto_reconnect){
             epoll_.RemoveFd(fd);
             reconnect();
@@ -81,9 +82,9 @@ SimpleClient::SimpleClient(ClientConfig config):
             Stop();
             return;
         }
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
-        }
+        // if (dispatcher_) {
+        //     dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
+        // }
     });
 
     epoll_.SetOnReadyWriteHandler([&](int fd){
@@ -92,6 +93,7 @@ SimpleClient::SimpleClient(ClientConfig config):
         }
         if (async_queue_send_){
             // send_queue_cv_.notify_one();
+            state_ = ClientState::SENDING;
         }else{
             state_ = ClientState::SENDING;
             if (QueueSendAll()){
@@ -113,18 +115,6 @@ SimpleClient::~SimpleClient()
     // d("~SimpleClient end")
 }
 
-// bool RecvMsg(int fd, void* buf, size_t size) {
-//     char* ptr = static_cast<char*>(buf);
-//     size_t total = 0;
-//     while (total < size) {
-//         ssize_t n = recv(fd, ptr + total, size - total, MSG_WAITALL);
-//         if (n <= 0) return false;
-//         total += n;
-//     }
-//     return true;
-// }
-
-
 void SimpleClient::Start()
 {
     state_ = ClientState::CONNECTING;
@@ -141,8 +131,8 @@ void SimpleClient::reconnect()
         if (sock < 0){
             continue;
         }
-        epoll_.AddFd(sock);
         socket_ = sock;
+        epoll_.AddFd(sock);
         state_ = ClientState::WAITING;
         break;
     }
@@ -185,9 +175,10 @@ int SimpleClient::SendToSocket(char *data, uint32_t size){
     msg.msg_iov = iov;
     msg.msg_iovlen = 2;
 
-
+    d("SendToSocket")
     ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
-// d("sendmsg " << size+ sizeof(size));
+    // d("sendmsg " << size+ sizeof(size));
+
     if (sent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             // std::cerr << "sock blocked" << std::endl;
@@ -269,6 +260,17 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     queue_th_ = new std::thread([this](){
         // std::unique_lock lock(queue_mtx_);
         while(async_queue_send_ && state_ != ClientState::DISCONNECTED) {
+            if (socket_ <= 0 || (state_ != ClientState::WAITING && state_ != ClientState::SENDING)) {
+                continue;
+            }
+            // if (socket_ <= 0){
+            //     continue;
+            // }
+            // if (!(state_ == ClientState::WAITING || state_ == ClientState::SENDING)){
+            //     //ff=t tf=f ft=f tt=f
+            //     // то есть если любое кроме WAITING и SENDING
+            //     continue;
+            // }
             // Если очередь пуста - ждем данных
             if (queue_.empty()) {
                 if (state_ == ClientState::SENDING){
@@ -285,9 +287,7 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
             }
             state_ = ClientState::SENDING;
 
-            queue_mtx_.lock();
-            queueSendAllUnsafe();
-            queue_mtx_.unlock();
+            QueueSendAll();
         }
     });
 }

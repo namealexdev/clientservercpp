@@ -10,75 +10,15 @@
 
 #include "libinclude/iserver.h"
 
-/*
-struct PacketParser {
-
-    // union {
-    //     uint32_t net_value; // Сетевой порядок (big-endian)
-    //     char bytes[PACKET_HEADER_SIZE];// Читаем по байтам
-    // } header;
-    // uint8_t pos_header = 0; // Прогресс чтения
-
-    // Данные пакета
-    uint32_t payload_size = 0; // Размер в хостовом порядке
-    // std::vector<char> payload;   // Буфер (переиспользуется)
-    char data[PACKET_MAX_SIZE];
-    uint32_t pos_data = 0;   // Прогресс чтения данных
-
-    inline void Reset() {
-        // pos_header = 0;
-        payload_size = 0;
-        // pos_payload = 0;
-        pos_data = 0;
-        // payload.resize(0);
-    }
-
-    // сохраняет данные пакета если они есть.
-    // return кол-во оставшихся байт
-    int ParseDataPacket(char* buf, int sz){
-        int count_read = 0;
-        // читаем 4 байта - size
-        if (pos_data < PACKET_HEADER_SIZE) {
-            int canread = std::min(sz, PACKET_HEADER_SIZE);
-            memcpy(data, buf, canread);
-            pos_data += canread;
-            count_read += canread;
-
-            // Ждём ещё
-            if (pos_data < PACKET_HEADER_SIZE) return sz - count_read;
-
-            payload_size = ntohl(*data); // Парсим размер
-
-            // ВАЛИДАЦИЯ
-            assert(payload_size <= PACKET_MAX_PAYLOAD_SIZE);
-            // if (payload_size == 0 ) {
-            //     std::cerr << "Invalid packet size: " << payload_size << " from fd " << fd << std::endl;
-            // }
-            // payload.resize(payload_size); // Выделяем/переиспользуем память
-        }
-
-        // читаем данные
-        if (pos_data < payload_size) {
-            int canread = std::min(payload_size, PACKET_MAX_PAYLOAD_SIZE);
-            memcpy(data + PACKET_HEADER_SIZE, buf, canread);
-            pos_data += canread;
-            count_read += canread;
-        }
-
-        return sz - count_read;
-    }
-
-    inline bool IsPacketReady(){// правильно?
-        return payload_size > 0 &&
-               payload_size + PACKET_HEADER_SIZE == pos_data + 1;
-    }
-};*/
-
 struct PacketParser {
     std::vector<char> data;           // Буфер для данных (заголовок + полезная нагрузка)
     uint32_t payload_size = 0;        // Размер полезной нагрузки в хостовом порядке
     uint32_t bytes_received = 0;      // Общее количество полученных байт
     bool header_parsed = false;       // Флаг, что заголовок распарсен
+
+    PacketParser() {
+        data.resize(PACKET_HEADER_SIZE);
+    }
 
     inline void Reset() {
         data.clear();
@@ -88,59 +28,55 @@ struct PacketParser {
     }
 
     // Сохраняет данные пакета если они есть
-    // Возвращает количество оставшихся байт
+    // Возвращает количество прочитанных байт
     int ParseDataPacket(const char* buf, int sz) {
-        int count_read = 0;
+        int total_read = 0;
 
-        // Если заголовок еще не распарсен
-        if (!header_parsed) {
-            // Сколько байт нужно дочитать до полного заголовка
-            int header_needed = PACKET_HEADER_SIZE - bytes_received;
-            int can_read = std::min(sz, header_needed);
+        while (total_read < sz) {
+            if (!header_parsed) {
+                int header_remaining = PACKET_HEADER_SIZE - bytes_received;
+                int to_copy = std::min(sz - total_read, header_remaining);
 
-            // Добавляем данные в вектор
-            data.insert(data.end(), buf, buf + can_read);
-            count_read += can_read;
-            bytes_received += can_read;
+                // копируем прямо в data
+                std::memcpy(data.data() + bytes_received, buf + total_read, to_copy);
+                bytes_received += to_copy;
+                total_read += to_copy;
 
-            // Если заголовок полностью получен
-            if (bytes_received >= PACKET_HEADER_SIZE) {
-                // Извлекаем размер полезной нагрузки
-                uint32_t net_size;
-                memcpy(&net_size, data.data(), sizeof(net_size));
-                payload_size = ntohl(net_size);
+                if (bytes_received == PACKET_HEADER_SIZE) {
+                    uint32_t net_size;
+                    std::memcpy(&net_size, data.data(), sizeof(net_size));
+                    payload_size = ntohl(net_size);
 
-                // Валидация
-                // if (payload_size > PACKET_MAX_PAYLOAD_SIZE) {
-                //     std::cerr << "Invalid packet size: " << payload_size << std::endl;
-                //     Reset();
-                //     return -1; // Ошибка
-                // }
+                    // резервируем сразу память под полный пакет
+                    data.resize(PACKET_HEADER_SIZE + payload_size);
+                    header_parsed = true;
+                }
+            }
 
-                header_parsed = true;
+            if (header_parsed) {
+                int payload_received = bytes_received - PACKET_HEADER_SIZE;
+                int payload_remaining = payload_size - payload_received;
+                if (payload_remaining > 0) {
+                    int to_copy = std::min(sz - total_read, payload_remaining);
+                    std::memcpy(data.data() + bytes_received, buf + total_read, to_copy);
+                    bytes_received += to_copy;
+                    total_read += to_copy;
+                }
 
-                data.resize(PACKET_HEADER_SIZE + payload_size);
+                if (IsPacketReady()) {
+                    // пакет готов
+                    break; // можно обработать пакет снаружи
+                }
             }
         }
 
-        // Если заголовок распарсен и есть еще данные для чтения
-        if (header_parsed && count_read < sz) {
-            const char* payload_start = buf + count_read;
-            int payload_remaining = payload_size - (bytes_received - PACKET_HEADER_SIZE);
-            int can_read = std::min(sz - count_read, payload_remaining);
-
-            // Добавляем полезную нагрузку
-            data.insert(data.end(), payload_start, payload_start + can_read);
-            count_read += can_read;
-            bytes_received += can_read;
-        }
-
-        return sz - count_read;
+        return total_read;
     }
+
 
     inline bool IsPacketReady() const {
         return header_parsed &&
-               (bytes_received == PACKET_HEADER_SIZE + payload_size);
+               (bytes_received >= PACKET_HEADER_SIZE + payload_size);
     }
 
     // Вспомогательные методы для доступа к данным
@@ -185,11 +121,21 @@ public:
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
     double GetBitrate(){
-
-        auto& stats = GetStats();
-        stats.calcBitrate();
-        // d("sim get btr " << stats.calcBitrate())
-        return stats.getBitrate();
+        // поидее только один
+        std::vector<Stats*> stats = GetClientsStats();
+        double btr = 0;
+        int i = 1;
+        for(auto& c: stats){
+            // для accept сокета, тоже добавляем в клиенты чтобы статистику
+            // if (c->ip.empty())continue;
+            d(i++ << " " << c->ip << " " << c->getCalcBitrate() << " " << c->total_bytes);
+            btr += c->getBitrate();
+        }
+        return btr;
+        // Stats& stats = GetStats();
+        // stats.calcBitrate();
+        // d("sim get btr " << stats.getBitrate() << " " << stats.total_bytes << "(" << stats.ip << ")")
+        // return stats.getBitrate();
     };
     std::vector<std::unique_ptr<IServer>>* GetWorkers(){
         return nullptr;
@@ -197,7 +143,7 @@ public:
     std::vector<Stats*> GetClientsStats(){
         std::vector<Stats*> vec;
         for (auto& c: clients_){
-            vec.emplace_back(&c.second.stats);
+            vec.emplace_back(&c.second->stats);
         }
         return vec;
     }
@@ -212,7 +158,7 @@ private:
     BaseEpoll epoll_;
     char buffer_[BUF_READ_SIZE];
 
-    std::unordered_map<int, ClientData> clients_;
+    std::unordered_map<int, std::shared_ptr<ClientData>> clients_;
     //for add client (from other thread when MultithreadServer) and erace
     std::mutex clients_mtx_;
 
@@ -228,9 +174,10 @@ public:
     int CountClients();
 
     void AddClientFd(int fd, const Stats &st){
-
-        accept_epoll_.AddFd(fd);
-        worker_client_counts_[0] ++;
+        // сюда не должно быть таких конектов
+        assert(false);
+        // accept_epoll_.AddFd(fd);
+        // worker_client_counts_[0] ++;
         // preClient_socks_.push(std::make_pair(fd, std::move(st)));
     }
 
@@ -241,9 +188,10 @@ public:
         for (auto &w: workers_){
             std::vector<Stats*> stats = w->GetClientsStats();
             for(auto& c: stats){
-                d(num_worker++ << "-  " << c->ip << " " << c->getCalcBitrate());
+                d(num_worker << "-  " << c->ip << " " << c->getCalcBitrate());
                 bps += c->getBitrate();
             }
+            num_worker++;
         }
         d("full " << Stats::formatBitrate(bps))
         return bps;

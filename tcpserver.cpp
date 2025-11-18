@@ -8,11 +8,21 @@
 #include <libinclude/netlib.h>
 
 #define d(x) std::cout << x << " \t(" << __FUNCTION__ << ' ' << __LINE__ << ")" << std::endl;
+#include <signal.h>
+#include <atomic>
 
+std::atomic<bool> should_exit{false};
+
+void signal_handler(int signal) {
+    should_exit = true;
+}
 void server_app(){
-    std::cout << "=== SINGLETHREAD SERVER TEST ===" << std::endl;
+    signal(SIGINT, signal_handler);
 
-    auto fac = std::make_unique<MultithreadFactory>();
+    std::cout << "=== SERVER TEST ===" << std::endl;
+
+    //MultithreadFactory SinglethreadFactory
+    auto fac = std::make_unique<SinglethreadFactory>();
     ServerConfig srv_conf{
         .port = 12345,
         .max_connections = 10
@@ -27,7 +37,9 @@ void server_app(){
         return;
     }
 
-    while(1){
+    while(!should_exit){
+        // static int i = 0;
+        // if (i++ >= 5)break;
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // for (auto &w: *srv->GetWorkers()){
@@ -37,6 +49,7 @@ void server_app(){
         // d("srv [" << srv->GetServerState() << "] clis:" << srv->CountClients() << " btr:" << srv->GetBitrate());
 
     }
+    d("end");
 }
 
 int main()

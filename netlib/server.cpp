@@ -108,6 +108,8 @@ bool SimpleServer::StartListen(int num_workers){
     state_ = ServerState::WAITING;
 
     listen_socket_ = sock;
+    // accept сокет пока не должен иметь статистики, поэтому не добавляем сюда
+    // AddClientFd(sock, {});
     epoll_.AddFd(sock);
     epoll_.RunEpoll();
     return true;
@@ -125,8 +127,18 @@ int SimpleServer::CountClients(){
 }
 
 void SimpleServer::AddClientFd(int fd, const Stats &st){
-    std::lock_guard<std::mutex> lock(clients_mtx_);
-    clients_[fd].stats = std::move(st);
+    // std::lock_guard<std::mutex> lock(clients_mtx_);
+    // clients_.emplace(fd, ClientData{});
+    // clients_[fd]->stats = std::move(st);
+
+    auto client = std::make_shared<ClientData>();
+    client->stats = std::move(st);
+    {
+        std::lock_guard<std::mutex> lock(clients_mtx_);
+        clients_.emplace(fd, client);
+    }
+
+
     epoll_.AddFd(fd);
     // preClient_socks_.push(std::make_pair(fd, std::move(st)));
 }
@@ -148,15 +160,18 @@ void SimpleServer::handleAccept(){
             return;
         }
 
-        epoll_.AddFd(client_fd);
-
         char ip_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
         Stats st;
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
-        std::lock_guard<std::mutex> lock(clients_mtx_);
-        clients_[client_fd].stats = std::move(st);
+        d(client_fd << " sim accept " << st.ip);
+
+        // std::lock_guard<std::mutex> lock(clients_mtx_);
+        // clients_.emplace(client_fd, ClientData{});
+        // clients_[client_fd].stats = std::move(st);
+        // epoll_.AddFd(client_fd);
+        AddClientFd(client_fd, st);
         // clients_[client_fd].state = ClientData::HANDSHAKE;
     }
 }
@@ -182,48 +197,55 @@ void SimpleServer::handleAccept(){
 
 void SimpleServer::handleClientData(int fd)
 {
-    ClientData& cli = clients_[fd];
+    // ClientData& cli = clients_[fd];
+    std::shared_ptr<ClientData> cli;
+    {
+        std::lock_guard<std::mutex> lock(clients_mtx_);
+        auto it = clients_.find(fd);
+        if (it == clients_.end()) {
+            return;
+        }
+        cli = it->second;
+    }
+    auto& pktParser = cli->pktReader_;
+    auto& stats = cli->stats;
+
     while (true) {
-        ssize_t n = recv(fd, buffer_, sizeof(buffer_), MSG_DONTWAIT);
-        if (n <= 0) {
-            if (errno == EAGAIN) return;
-            cli.pktReader_.Reset();
+        ssize_t szrecv = recv(fd, buffer_, sizeof(buffer_), MSG_DONTWAIT);
+        if (szrecv <= 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+            pktParser.Reset();
             removeClient(fd);
             return;
         }
         // stats_.addBytes(n);
-        cli.stats.addBytes(n);
+        stats.addBytes(szrecv);
         // d("add bytes:" << n)
 
         int processed = 0;
-        while (processed < n) {
-            int remaining = cli.pktReader_.ParseDataPacket(buffer_ + processed, n - processed);
+        while (processed < szrecv) {
+            int szreaded = pktParser.ParseDataPacket(buffer_ + processed, szrecv - processed);
+            if (szreaded <= 0) break;
+            // if (readed == 0) {
+            //     if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+            //     std::cerr << "Packet parsing error from fd " << fd << std::endl;
+            //     pktParser.Reset();
+            //     removeClient(fd);
+            //     return;
+            // }
+            processed += szreaded;
 
-            if (n <= 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) return;
-                std::cerr << "Packet parsing error from fd " << fd << std::endl;
-                cli.pktReader_.Reset();
-                removeClient(fd);
-                return;
-            }
-
-            if (cli.pktReader_.IsPacketReady()) {
-                // d("Received packet of size " << pktReader_.GetPayloadSize() << " from fd " << fd);
+            if (pktParser.IsPacketReady()) {
+                // d("Received packet of size " << pktParser.GetPayloadSize() << " from fd " << fd);
 
                 if (dispatcher_) {
                     DataReceived d;
-                    d.data = const_cast<char*>(cli.pktReader_.GetPayloadData());
-                    d.size = cli.pktReader_.GetPayloadSize();
+                    d.data = const_cast<char*>(pktParser.GetPayloadData());
+                    d.size = pktParser.GetPayloadSize();
                     dispatcher_->onEvent(EventType::DataReceived, &d);
                 }
 
-                cli.pktReader_.Reset();
-
-                // Обновляем счетчик обработанных байт
-                processed = n - remaining;
-            } else {
-                // Пакет еще не готов, выходим из внутреннего цикла
-                break;
+                pktParser.Reset();
             }
         }
     }
@@ -237,8 +259,17 @@ void SimpleServer::removeClient(int fd){
         dispatcher_->onEvent(EventType::ClientDisconnected);
     }
 
-    std::lock_guard<std::mutex> lock(clients_mtx_);
-    clients_.erase(fd);
+    // std::lock_guard<std::mutex> lock(clients_mtx_);
+    // clients_.erase(fd);
+    std::shared_ptr<ClientData> cli;
+    {
+        std::lock_guard<std::mutex> lock(clients_mtx_);
+        auto it = clients_.find(fd);
+        if (it != clients_.end()) {
+            cli = it->second;
+            clients_.erase(it);
+        }
+    }
 }
 
 MultithreadServer::MultithreadServer(ServerConfig config) :
@@ -372,7 +403,7 @@ void MultithreadServer::handleAccept(int fd){
             );
         int idx = std::distance(worker_client_counts_.begin(), it);
 
-        d("accept " << st.ip << " min:" << idx)
+        d(client_fd << " accept " << st.ip << " min:" << idx)
 
         if (dispatcher_){
             dispatcher_->onEvent(EventType::ClientConnected);

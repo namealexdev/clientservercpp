@@ -95,12 +95,14 @@ public:
     void SetOnReadAcceptHandler(std::function<void(int)> handler) { on_read_ = std::move(handler); };
     void SetOnReadyWriteHandler(std::function<void(int)> handler) { on_write_ = std::move(handler); };
     void SetOnDisconnectHandler(std::function<void(int)> handler) { on_hangup_ = std::move(handler); };
+    void SetOnReconnectHandler(std::function<void()> handler) { on_reconnect_ = std::move(handler); };
 private:
     int epfd_ = -1;
 
     std::function<void(int)> on_read_;
     std::function<void(int)> on_write_;
     std::function<void(int)> on_hangup_;
+    std::function<void()> on_reconnect_;
 
     void ExecLoop();// блокирует
     std::unique_ptr<std::thread> thLoop_ = 0;
