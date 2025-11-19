@@ -87,7 +87,8 @@ public:
     void RunEpoll(bool connectInLoop = false);
     void StopEpoll();
 
-    // void StartEpoll(bool autoreconnect);
+    void EnableWriteEvents(int fd);
+    void DisableWriteEvents(int fd);
 
     // прокидывает все вызовы сюда
     // void (*on_event_handlers)(int fd, uint32_t events) = 0;

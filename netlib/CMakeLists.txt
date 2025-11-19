@@ -19,6 +19,7 @@ add_library(netlib SHARED
   server.h server.cpp
   client.h client.cpp
   utils.h utils.cpp
+  packetparser.h
 )
 
 target_include_directories(netlib PUBLIC

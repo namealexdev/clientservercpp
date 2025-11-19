@@ -19,6 +19,8 @@ add_subdirectory(netlib)
 
 add_executable(client tcpclient.cpp ${COMMON_SOURCES})
 target_link_libraries(client netlib)
+find_package(Boost REQUIRED)
+target_link_libraries(client Boost::boost)
 
 add_executable(server tcpserver.cpp ${COMMON_SOURCES})
 target_link_libraries(server netlib)

@@ -11,7 +11,7 @@ using std::string;
 
 class Stats {
 public:
-    std::string ip;
+    string ip;
 
     void addBytes(size_t bytes);
 

@@ -9,12 +9,8 @@
 struct ServerConfig{
     string host = "0.0.0.0";
     int port = 12345;
-    // string filename;// empty = without write
-
-    // int recv_buffer_size = 1 * 1024 * 1024; // 100 MiB
     int max_connections = 10;
-
-    // int serialization_ths = 1;
+    // int recv_buffer_size = 1 * 1024 * 1024; // 100 MiB
 };
 
 enum class ServerState : uint8_t{
@@ -42,19 +38,7 @@ public:
     std::string_view GetLastError(){return last_error_;}
     string GetServerState();
 
-    // Wait until server enters WAITING state, or ERROR/timeout occurs.
-    // Returns true if WAITING reached; false otherwise.
-    // bool wait_started(int timeout_ms);
-
 protected:
-    // state and synchronization
-    // void set_state(ServerState s){
-    //     {
-    //         std::lock_guard<std::mutex> lk(state_mtx_);
-    //         state_ = s;
-    //     }
-    //     state_cv_.notify_all();
-    // }
     ServerState state_ = ServerState::STOPPED;
     int create_listen_socket();
 
@@ -62,8 +46,6 @@ protected:
     string last_error_;
     // Stats stats_;
 
-    // std::mutex state_mtx_;
-    // std::condition_variable state_cv_;
 };
 
 

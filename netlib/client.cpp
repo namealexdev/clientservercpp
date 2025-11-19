@@ -69,10 +69,12 @@ SimpleClient::SimpleClient(ClientConfig config):
     });
 
     epoll_.SetOnReconnectHandler([&](){
+        d("reconnect " << conf_.auto_send)
         reconnect();
         if (conf_.auto_send){
             SwitchAsyncQueue(conf_.auto_send);
         }
+        d("stop reconnect")
     });
 
     epoll_.SetOnDisconnectHandler([&](int fd){
@@ -91,6 +93,7 @@ SimpleClient::SimpleClient(ClientConfig config):
     });
 
     epoll_.SetOnReadyWriteHandler([&](int fd){
+        // d("onwrite " << fd);
         if (dispatcher_){
             dispatcher_->onEvent(EventType::WriteReady);
         }
@@ -131,6 +134,9 @@ void SimpleClient::reconnect()
     while(state_ != ClientState::DISCONNECTED){
         auto sock = create_socket_connect();
         if (sock < 0){
+            if (!conf_.auto_reconnect){
+                break;
+            }
             continue;
         }
         socket_ = sock;
@@ -161,6 +167,11 @@ void SimpleClient::Stop()
     epoll_.RemoveFd(socket_);
     socket_ = -1;
     epoll_.StopEpoll();
+}
+
+bool SimpleClient::IsConnected()
+{
+    return state_ == ClientState::WAITING || state_ == ClientState::SENDING;
 }
 
 int SimpleClient::SendToSocket(char *data, uint32_t size){
@@ -195,8 +206,8 @@ int SimpleClient::SendToSocket(char *data, uint32_t size){
 }
 
 void SimpleClient::QueueAdd(char *data, int size){
-    std::lock_guard<std::mutex> lock(queue_mtx_);
-    queue_.push(QueueItem{data, size, 0});
+    // std::lock_guard<std::mutex> lock(queue_mtx_);
+    push_item(QueueItem{data, size, 0});
     // if (async_queue_send_) {
     //     // send_queue_cv_.notify_one();
     // }
@@ -206,25 +217,25 @@ bool SimpleClient::QueueSendAll(){
     // надо ждать события чтобы продолжить, чтобы не грузился cpu ???
     // если отправилась только часть, то надо сохранить может значение
     // с какого читать надо и вставить обратно в очередь, но чтобы порядок сохранился
-    std::lock_guard<std::mutex> lock(queue_mtx_);
+    // std::lock_guard<std::mutex> lock(queue_mtx_);
     return queueSendAllUnsafe();
 }
 
 bool SimpleClient::queueSendAllUnsafe()
 {
-    while (!queue_.empty()) {
-        auto& current_item = queue_.front();
-        size_t remaining = current_item.size - current_item.sent_bytes;
+    while (!is_queue_empty()) {
+        auto& cur = front_item();
+        size_t remaining = cur.size - cur.sent_bytes;
 
         if (remaining > 0) {
-            int sent = SendToSocket(current_item.data + current_item.sent_bytes,
+            int sent = SendToSocket(cur.data + cur.sent_bytes,
                                     remaining);
 
             if (sent == -1) {
                 state_ = ClientState::ERROR;
                 return false; // ошибка
             } else if (sent > 0) {
-                current_item.sent_bytes += sent;
+                cur.sent_bytes += sent;
             } else {
                 // break; // не удалось отправить сейчас
                 return false; // выходим, но очередь не пуста
@@ -233,30 +244,33 @@ bool SimpleClient::queueSendAllUnsafe()
 
 
         // Если сообщение полностью отправлено
-        if (current_item.sent_bytes >= current_item.size) {
-            queue_.pop();
+        if (cur.sent_bytes >= cur.size) {
+            pop_item(cur);
         }
     }
 
-    return queue_.empty();
+    return is_queue_empty();
 }
 
 // когда прилетает событие делаем notify
 void SimpleClient::SwitchAsyncQueue(bool enable)
 {
+    d("async queue " << enable << " before: " << async_queue_send_)
     if (async_queue_send_ && enable){
         return;
     }
 
-    d("async queue " << enable)
     async_queue_send_ = enable;
     if (!async_queue_send_){
         if (queue_th_){
             // stop
             // send_queue_cv_.notify_all();
+            futex_wake_queue();
+            d("join")
             if (queue_th_->joinable()){
                 queue_th_->join();
             }
+            d("del")
             delete queue_th_;
             queue_th_ = nullptr;
         }
@@ -266,20 +280,22 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     queue_th_ = new std::thread([this](){
         // std::unique_lock lock(queue_mtx_);
         d("queue_th_ th start " << async_queue_send_ << " " << (int)state_ << " " << (async_queue_send_ && state_ != ClientState::DISCONNECTED))
-        while(async_queue_send_ && state_ != ClientState::DISCONNECTED) {
-            if (socket_ <= 0|| (state_ != ClientState::WAITING && state_ != ClientState::SENDING)) {
+            while (async_queue_send_ && state_ != ClientState::DISCONNECTED) {
+            d("loop start");
+
+            if (socket_ <= 0 || !IsConnected()) {
+                d("WAIT: no socket");
+                futex_wait_queue();
                 continue;
             }
-            // Если очередь пуста - ждем данных
-            if (queue_.empty()) {
-                if (state_ == ClientState::SENDING){
-                    state_ = ClientState::WAITING;
-                }
+
+            if (is_queue_empty()) {
+                d("WAIT: empty queue");
+                futex_wait_queue();
                 continue;
             }
-            state_ = ClientState::SENDING;
 
-
+            d("SENDING...");
             QueueSendAll();
         }
         d("----queue_th_ th end")

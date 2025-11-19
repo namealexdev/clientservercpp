@@ -25,6 +25,20 @@ bool BaseEpoll::AddFd(int fd)
     return true;
 }
 
+void BaseEpoll::EnableWriteEvents(int fd) {
+    epoll_event ev{};
+    ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR;
+    ev.data.fd = fd;
+    epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev);
+}
+
+void BaseEpoll::DisableWriteEvents(int fd) {
+    epoll_event ev{};
+    ev.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
+    ev.data.fd = fd;
+    epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev);
+}
+
 void BaseEpoll::RemoveFd(int fd)
 {
     epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);

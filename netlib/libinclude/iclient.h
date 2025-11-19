@@ -50,6 +50,7 @@ public:
     virtual void Start() = 0;
     virtual void StartWaitConnect() = 0;
     virtual void Stop() = 0;
+    virtual bool IsConnected() = 0;
 
     string GetClientState();
     // Wait until the client connects (WAITING or SENDING) or ERROR/timeout occurs.
