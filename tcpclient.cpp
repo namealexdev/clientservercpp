@@ -112,26 +112,27 @@ void client_stress(){
     });
 
     //async queue
-    while (1){
-        for (int i = 0; i < 100; i++){
-            cli->QueueAdd(data100.data(), data100.size());
-        }
-        // d("[stress async] cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getCalcBitrate());
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-
-    //sync
-    // cli->SwitchAsyncQueue(false);
     // while (1){
-    //     if (!cli->IsConnected()){
-    //         std::this_thread::yield();
-    //         continue;
-    //     }
-    //     for (int i = 0; i < 10; i++){
+    //     for (int i = 0; i < 100; i++){
     //         cli->QueueAdd(data100.data(), data100.size());
     //     }
-    //     cli->QueueSendAll();
+    //     // d("[stress async] cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getCalcBitrate());
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     // }
+
+    //sync
+    cli->SwitchAsyncQueue(false);
+    while (1){
+        if (!cli->IsConnected()){
+            std::this_thread::yield();
+            continue;
+        }
+        for (int i = 0; i < 10; i++){
+            cli->QueueAdd(data100.data(), data100.size());
+        }
+        cli->QueueSendAll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
 
 }
 

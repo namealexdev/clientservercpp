@@ -22,7 +22,7 @@ void server_app(){
     std::cout << "=== multi SERVER TEST ===" << std::endl;
 
     //MultithreadFactory SinglethreadFactory
-    auto fac = std::make_unique<MultithreadFactory>();
+    auto fac = std::make_unique<SinglethreadFactory>();
     ServerConfig srv_conf{
         .port = 12345,
         .max_connections = 10

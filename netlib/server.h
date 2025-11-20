@@ -46,15 +46,16 @@ public:
     double GetBitrate(){
         // поидее только один
         std::vector<Stats*> stats = GetClientsStats();
-        double btr = 0;
-        int i = 1;
+        double bps = 0;
+        int i = 0;
         for(auto& c: stats){
             // для accept сокета, тоже добавляем в клиенты чтобы статистику
             // if (c->ip.empty())continue;
-            d(i++ << " " << c->ip << " " << c->getCalcBitrate() << " " << c->total_bytes);
-            btr += c->getBitrate();
+            d(" " << ++i << " " << c->ip << " " << c->getCalcBitrate());
+            bps += c->getBitrate();
         }
-        return btr;
+        d("full: " << Stats::formatBitrate(bps) << " count:" << i);
+        return bps;
         // Stats& stats = GetStats();
         // stats.calcBitrate();
         // d("sim get btr " << stats.getBitrate() << " " << stats.total_bytes << "(" << stats.ip << ")")
@@ -108,16 +109,24 @@ public:
     double GetBitrate(){
         // d("multi get btr:")
         double bps = 0;
-        int num_worker = 1;
+        int num_worker = 0;
+        string count_clis;
+        int count = 0;
         for (auto &w: workers_){
             std::vector<Stats*> stats = w->GetClientsStats();
             for(auto& c: stats){
-                d(num_worker << "-  " << c->ip << " " << c->getCalcBitrate());
+                d(num_worker+1 << "-  " << c->ip << " " << c->getCalcBitrate());
                 bps += c->getBitrate();
             }
+            count_clis += std::to_string(num_worker+1) + ":" + std::to_string(worker_client_counts_[num_worker]) + " ";
+            count += w->CountClients();
             num_worker++;
         }
-        d("full " << Stats::formatBitrate(bps))
+
+        // int i = 1;
+        // for (auto& c: worker_client_counts_)
+        //     count_clis += std::to_string(i++) + ":" + std::to_string(c) + " ";
+        d("full " << Stats::formatBitrate(bps) << " " << count_clis << " count:" << count << "" )
         return bps;
     };
     std::vector<std::unique_ptr<IServer>>* GetWorkers(){

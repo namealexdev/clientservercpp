@@ -31,6 +31,7 @@ private:
 // ждем от клиента 20 байт
 struct ClientHiMsg{
     std::array<uint8_t, 16> uuid;
+    // uint64_t seq_restore = -1;
 };
 // ждем от сервера ответ 24 байта
 struct ServerAnsHiMsg{

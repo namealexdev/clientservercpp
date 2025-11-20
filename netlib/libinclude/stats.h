@@ -21,9 +21,9 @@ public:
     string getCalcBitrate();
 
     static std::string formatBitrate(double bps, bool bytes = true);
-    uint64_t total_bytes = 0;
-private:
 
+private:
+    uint64_t total_bytes = 0;
     uint64_t last_bytes = 0;
     std::chrono::steady_clock::time_point last_time{};
     double last_bps = 0;

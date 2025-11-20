@@ -128,6 +128,7 @@ int SimpleClientEventfd::SendToSocket(char* d, uint32_t sz)
         }
         total_sent += static_cast<size_t>(s);
     }
+    stats_.addBytes(total_sent);
     return static_cast<int>(total_sent);
 }
 

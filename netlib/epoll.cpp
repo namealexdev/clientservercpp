@@ -1,5 +1,22 @@
 #include "epoll.h"
 
+BaseEpoll::BaseEpoll(){
+    epfd_ = epoll_create1(EPOLL_CLOEXEC);
+    if (epfd_ == -1) throw std::runtime_error("epoll_create1");
+    d("baseepoll: " << epfd_)
+}
+
+BaseEpoll::~BaseEpoll(){
+    if (epfd_ >= 0) {
+        close(epfd_);
+    }
+    if (thLoop_){
+        StopEpoll();
+        thLoop_->join();
+        thLoop_.reset();
+    }
+}
+
 bool BaseEpoll::AddFd(int fd)
 {
     /*
@@ -25,7 +42,9 @@ bool BaseEpoll::AddFd(int fd)
     return true;
 }
 
+//Segmentation fault (core dumped)
 void BaseEpoll::EnableWriteEvents(int fd) {
+    d("EnableWriteEvents " << epfd_)
     epoll_event ev{};
     ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR;
     ev.data.fd = fd;
@@ -33,6 +52,7 @@ void BaseEpoll::EnableWriteEvents(int fd) {
 }
 
 void BaseEpoll::DisableWriteEvents(int fd) {
+    d("DisableWriteEvents " << epfd_)
     epoll_event ev{};
     ev.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
     ev.data.fd = fd;
@@ -64,22 +84,6 @@ void BaseEpoll::RunEpoll(bool connectInLoop/* = false*/){
 
 void BaseEpoll::StopEpoll(){
     need_stop_ = true;
-}
-
-BaseEpoll::BaseEpoll(){
-    epfd_ = epoll_create1(EPOLL_CLOEXEC);
-    if (epfd_ == -1) throw std::runtime_error("epoll_create1");
-}
-
-BaseEpoll::~BaseEpoll(){
-    if (epfd_ >= 0) {
-        close(epfd_);
-    }
-    if (thLoop_){
-        StopEpoll();
-        thLoop_->join();
-        thLoop_.reset();
-    }
 }
 
 void BaseEpoll::ExecLoop()

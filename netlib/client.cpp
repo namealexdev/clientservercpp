@@ -93,10 +93,8 @@ SimpleClient::SimpleClient(ClientConfig config):
     });
 
     epoll_.SetOnReadyWriteHandler([&](int fd){
-        // d("onwrite " << fd);
-        if (dispatcher_){
-            dispatcher_->onEvent(EventType::WriteReady);
-        }
+        d("onwrite " << fd);
+
         if (async_queue_send_){
             state_ = ClientState::SENDING;
             futex_wake_queue();
@@ -110,8 +108,12 @@ SimpleClient::SimpleClient(ClientConfig config):
                 epoll_.DisableWriteEvents(fd);
             }else{
                 state_ = ClientState::SENDING;
-                // EnableWriteEvents уже уключен в QueueSendAll
+                // EnableWriteEvents уже включен в QueueSendAll
             }
+        }
+
+        if (dispatcher_){
+            dispatcher_->onEvent(EventType::WriteReady);
         }
     });
     if (!conf_.auto_reconnect && conf_.auto_send){
@@ -176,38 +178,67 @@ void SimpleClient::Stop()
     epoll_.StopEpoll();
 }
 
-int SimpleClient::SendToSocket(char *data, uint32_t size)
+// int SimpleClient::SendToSocket(char *data, uint32_t size)
+// {
+//     if (socket_ < 0) return -1;
+//     if (size == 0) return 0;
+
+//     uint32_t net_size = htonl(static_cast<uint32_t>(size));
+
+//     iovec iov[2];
+//     iov[0].iov_base = &net_size;
+//     iov[0].iov_len = sizeof(net_size);
+//     iov[1].iov_base = data;
+//     iov[1].iov_len = size;
+
+//     msghdr msg = {};
+//     msg.msg_iov = iov;
+//     msg.msg_iovlen = 2;
+
+//     // d("SendToSocket")
+//     ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+//     // d("sendmsg " << size+ sizeof(size));
+
+//     if (sent < 0) {
+//         if (errno == EAGAIN || errno == EWOULDBLOCK) {
+//             // std::cerr << "sock blocked" << std::endl;
+//             return 0; // сокет временно недоступен для записи
+//         }
+//         // std::cerr << sent << " send failed: " << strerror(errno) << std::endl;
+//         return -1;
+//     }
+
+//     stats_.addBytes(sent);
+//     return sent;
+// }
+
+int SimpleClient::SendToSocket(char* d, uint32_t sz)
 {
     if (socket_ < 0) return -1;
-    if (size == 0) return 0;
+    if (sz == 0) return 0;
 
-    uint32_t net_size = htonl(static_cast<uint32_t>(size));
+    // single iovec; loop until all sent or EAGAIN
+    size_t total_sent = 0;
+    while (total_sent < sz) {
+        iovec iov;
+        iov.iov_base = d + total_sent;
+        iov.iov_len = sz - total_sent;
+        msghdr msg{};
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
 
-    iovec iov[2];
-    iov[0].iov_base = &net_size;
-    iov[0].iov_len = sizeof(net_size);
-    iov[1].iov_base = data;
-    iov[1].iov_len = size;
-
-    msghdr msg = {};
-    msg.msg_iov = iov;
-    msg.msg_iovlen = 2;
-
-    // d("SendToSocket")
-    ssize_t sent = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
-    // d("sendmsg " << size+ sizeof(size));
-
-    if (sent < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // std::cerr << "sock blocked" << std::endl;
-            return 0; // сокет временно недоступен для записи
+        ssize_t s = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (s < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return static_cast<int>(total_sent);
+            }
+            // std::cerr << sent << " send failed: " << strerror(errno) << std::endl;
+            return -1;
         }
-        // std::cerr << sent << " send failed: " << strerror(errno) << std::endl;
-        return -1;
+        total_sent += static_cast<size_t>(s);
     }
-
-    stats_.addBytes(sent);
-    return sent;
+    stats_.addBytes(total_sent);
+    return static_cast<int>(total_sent);
 }
 
 bool SimpleClient::QueueAdd(char *data, int size){
@@ -222,9 +253,11 @@ bool SimpleClient::QueueAdd(char *data, int size){
             futex_wake_queue();
         } else {
             // узнаем когда может писать
+            // d("add")
             epoll_.EnableWriteEvents(socket_);
         }
     }
+    return true;
 }
 
 bool SimpleClient::QueueSendAll(){
@@ -245,6 +278,8 @@ bool SimpleClient::QueueSendAll(){
             } else {
                 // break; // не удалось отправить сейчас
                 // для отдельного потока
+
+                // d("fail send")
                 epoll_.EnableWriteEvents(socket_);
                 return false; // выходим, но очередь не пуста
             }
@@ -320,25 +355,27 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     queue_th_ = new std::thread([this](){
         // std::unique_lock lock(queue_mtx_);
         d("queue_th_ th start " << async_queue_send_ << " " << (int)state_ << " " << (async_queue_send_ && state_ != ClientState::DISCONNECTED))
-            while (async_queue_send_ && state_ != ClientState::DISCONNECTED) {
-            d("loop start");
+        while (async_queue_send_ && state_ != ClientState::DISCONNECTED) {
+            // d("loop start");
 
             if (socket_ <= 0 || !IsConnected()) {
-                d("WAIT: no socket");
+                d("ftx WAIT: no socket ");
                 futex_wait_queue();
                 // epoll_.EnableWriteEvents(socket_);
                 continue;
             }
 
             if (is_queue_empty()) {
-                d("WAIT: empty queue");
+                d("ftx WAIT: empty queue");
                 futex_wait_queue();
                 // epoll_.EnableWriteEvents(socket_);
                 continue;
             }
 
             d("SENDING...");
-            QueueSendAll();
+            if (!QueueSendAll()){
+                futex_wait_queue();
+            }
         }
         d("----queue_th_ th end")
     });
