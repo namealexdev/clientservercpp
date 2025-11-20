@@ -27,26 +27,26 @@ private:
     std::unordered_map<EventType, std::function<void(void*)>> handlers_;
 };
 
-#pragma pack(push, 1)
-// ждем от клиента 20 байт
-struct ClientHiMsg{
-    std::array<uint8_t, 16> uuid;
-    // uint64_t seq_restore = -1;
-};
-// ждем от сервера ответ 24 байта
-struct ServerAnsHiMsg{
-    enum ClientMode : uint8_t{
-        ERRUUID,
-        SEND
-    };
-    // подтверждение что точно наш сервер
-    std::array<uint8_t, 16> client_uuid;
-    // что клиенту делать дальше
-    ClientMode client_mode;
-};
-static_assert(sizeof(ClientHiMsg) == 16, "Size mismatch");
-static_assert(sizeof(ServerAnsHiMsg) == 17, "Size mismatch");
-#pragma pack(pop)
+// #pragma pack(push, 1)
+// // ждем от клиента 20 байт
+// struct ClientHiMsg{
+//     std::array<uint8_t, 16> uuid;
+//     // uint64_t seq_restore = -1;
+// };
+// // ждем от сервера ответ 24 байта
+// struct ServerAnsHiMsg{
+//     enum ClientMode : uint8_t{
+//         ERRUUID,
+//         SEND
+//     };
+//     // подтверждение что точно наш сервер
+//     std::array<uint8_t, 16> client_uuid;
+//     // что клиенту делать дальше
+//     ClientMode client_mode;
+// };
+// static_assert(sizeof(ClientHiMsg) == 16, "Size mismatch");
+// static_assert(sizeof(ServerAnsHiMsg) == 17, "Size mismatch");
+// #pragma pack(pop)
 
 
 /*

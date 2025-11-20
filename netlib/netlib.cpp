@@ -9,7 +9,7 @@ std::unique_ptr<IServer> SinglethreadFactory::createServer(ServerConfig conf) {
 
 std::unique_ptr<IClient> SinglethreadFactory::createClient(ClientConfig conf) {
     //SimpleClientEventfd SimpleClient
-    return std::make_unique<SimpleClient>(std::move(conf));
+    return std::make_unique<SimpleClientEventfd>(std::move(conf));
 }
 
 std::unique_ptr<IServer> MultithreadFactory::createServer(ServerConfig conf) {

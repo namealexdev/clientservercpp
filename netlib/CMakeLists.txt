@@ -21,6 +21,7 @@ add_library(netlib SHARED
   utils.h utils.cpp
   packetparser.h
   client2.h
+  handshake.h
 )
 
 target_include_directories(netlib PUBLIC
