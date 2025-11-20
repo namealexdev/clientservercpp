@@ -24,6 +24,8 @@ using std::string;
 #define EPOLL_MAX_EVENTS 64
 #define EPOLL_TIMEOUT 100
 
+#define QUEUE_CAP 4096 // SPSC queue capacity
+
 constexpr int PACKET_HEADER_SIZE = 4;
 // constexpr uint32_t PACKET_MAX_PAYLOAD_SIZE = 16 * 1024 * 1024; // 16MB защита
 // constexpr size_t PACKET_MAX_SIZE = PACKET_HEADER_SIZE + PACKET_MAX_PAYLOAD_SIZE;

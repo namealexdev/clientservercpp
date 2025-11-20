@@ -24,15 +24,15 @@ public:
     explicit SimpleClient(ClientConfig config);
     ~SimpleClient();
 
-    void Start();
-    void Stop();
+    void Start() override;
+    void Stop() override;
 
-    int SendToSocket(char* data, uint32_t size);
-    bool QueueAdd(char* data, int size);
-    bool QueueSendAll();
-    void SwitchAsyncQueue(bool enable);
+    int SendToSocket(char* data, uint32_t size) override;
+    bool QueueAdd(char* data, int size) override;
+    bool QueueSendAll() override;
+    void SwitchAsyncQueue(bool enable) override;
 
-    void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
+    void AddHandlerEvent(EventType type, std::function<void(void*)> handler) override;
 
 private:
     void handleData();
@@ -43,6 +43,7 @@ private:
     BaseEpoll epoll_;
 
     // TODO(пока без реализации): for recv data from server
+    // получение от снифера
     char buffer_[BUF_READ_SIZE];
 
     std::thread* queue_th_ = 0;
@@ -56,7 +57,7 @@ private:
     };
     // std::mutex queue_mtx_;
     // std::queue<QueueItem> queue_;
-    boost::lockfree::spsc_queue<QueueItem> queue_{100};
+    boost::lockfree::spsc_queue<QueueItem> queue_{4096};
 
     // обертки для очереди
     bool push_item(const QueueItem&& item);

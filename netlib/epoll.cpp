@@ -14,7 +14,7 @@ bool BaseEpoll::AddFd(int fd)
     // const uint32_t ev_client = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLOUT;
     // const uint32_t ev_server = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET | EPOLLOUT;
 
-    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR;//EPOLLOUT
+    const uint32_t events = EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET;
     epoll_event ev{.events = events, .data{.fd = fd}};
     if (epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
         // throw std::runtime_error("epoll_ctl add");
@@ -84,7 +84,7 @@ BaseEpoll::~BaseEpoll(){
 
 void BaseEpoll::ExecLoop()
 {
-    static epoll_event events[EPOLL_MAX_EVENTS];
+    epoll_event events[EPOLL_MAX_EVENTS];
 
     while (!need_stop_) {
         int nfds = epoll_wait(epfd_, events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);

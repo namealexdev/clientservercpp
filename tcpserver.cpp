@@ -32,7 +32,7 @@ void server_app(){
         std::cerr << "Failed to create server " << std::endl;
         return;
     }
-    if (!srv->StartListen(2)) {
+    if (!srv->StartListen(4)) {
         std::cerr << "Failed to start server. err:" << srv->GetLastError() << std::endl;
         return;
     }

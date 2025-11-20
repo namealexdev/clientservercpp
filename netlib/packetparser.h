@@ -21,6 +21,15 @@ struct PacketParser {
         data.resize(PACKET_HEADER_SIZE);
     }
 
+    inline void EnsureCapacity(size_t needed) {
+        if (data.capacity() < needed) {
+            data.reserve(needed);
+        }
+        if (data.size() < needed) {
+            data.resize(needed); // resize logical size when we know exact needed
+        }
+    }
+
     // Сохраняет данные пакета если они есть
     // Возвращает сколько байт прочитано из буфера
     int ParseDataPacket(const char* buf, int sz) {
@@ -47,7 +56,8 @@ struct PacketParser {
                     // TODO(): проверка на максимальый или очень большой размер
 
                     // резервируем сразу память под полный пакет
-                    data.resize(PACKET_HEADER_SIZE + payload_size);
+                    // data.resize(PACKET_HEADER_SIZE + payload_size);
+                    EnsureCapacity(PACKET_HEADER_SIZE + payload_size);
                     header_parsed = true;
                 }
             }

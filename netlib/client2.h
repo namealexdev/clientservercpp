@@ -20,12 +20,6 @@
 #include <iostream>
 
 
-static constexpr int QUEUE_CAP       = 4096;   // SPSC queue capacity
-static constexpr int MAX_EPOLL_EVENTS = 32;
-static constexpr int MAX_IOV_BATCH    = 32;    // максимальный iovec пакет
-static constexpr int RECV_BUF_SIZE    = 16384;
-
-
 class SimpleClientEventfd : public IClient {
 public:
     struct QueueItem {
@@ -47,6 +41,7 @@ public:
     void SwitchAsyncQueue(bool enable) override;
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler) override;
+
 private:
 
     // FD
@@ -74,6 +69,8 @@ private:
 
     // handleData перенесена сюда
     void handleData();
+
+    char buf[BUF_READ_SIZE];
 };
 
 
@@ -262,7 +259,6 @@ bool SimpleClientEventfd::reconnect()
 
 void SimpleClientEventfd::handleData()
 {
-    char buf[RECV_BUF_SIZE];
 
     while (true) {
         ssize_t n = recv(socket_fd_, buf, sizeof(buf), MSG_DONTWAIT);
@@ -336,10 +332,10 @@ void SimpleClientEventfd::epollLoop()
         return;
     }
 
-    std::vector<epoll_event> evs(MAX_EPOLL_EVENTS);
+    epoll_event events[EPOLL_MAX_EVENTS];
 
     while (running_) {
-        int n = epoll_wait(epfd_, evs.data(), MAX_EPOLL_EVENTS, -1);
+        int n = epoll_wait(epfd_, events, EPOLL_MAX_EVENTS, -1);
         if (n < 0) {
             if (errno == EINTR) continue;
             d("epoll_wait error: " << strerror(errno));
@@ -347,8 +343,8 @@ void SimpleClientEventfd::epollLoop()
         }
 
         for (int i = 0; i < n; ++i) {
-            int fd = evs[i].data.fd;
-            uint32_t ev = evs[i].events;
+            int fd = events[i].data.fd;
+            uint32_t ev = events[i].events;
 
             // отправка по event, когда делаем push и когда EPOLLOUT + auto_send
             // но если часто делать push, то постоянно будут поступать сюда события ...
