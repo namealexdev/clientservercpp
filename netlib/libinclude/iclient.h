@@ -48,9 +48,12 @@ public:
     virtual ~IClient() = default;
 
     virtual void Start() = 0;
-    virtual void StartWaitConnect() = 0;
+    // virtual void StartWaitConnect() = 0;
     virtual void Stop() = 0;
-    virtual bool IsConnected() = 0;
+    bool IsConnected()
+    {
+        return state_ == ClientState::WAITING || state_ == ClientState::SENDING;
+    }
 
     string GetClientState();
     // Wait until the client connects (WAITING or SENDING) or ERROR/timeout occurs.
@@ -63,7 +66,7 @@ public:
     // прокидываем методы в LightEpoll
     virtual int SendToSocket(char* d, uint32_t sz) = 0;
     virtual void SwitchAsyncQueue(bool enable) = 0;
-    virtual void QueueAdd(char* d, int sz) = 0;
+    virtual bool QueueAdd(char* d, int sz) = 0;
     virtual bool QueueSendAll() = 0;
 
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;

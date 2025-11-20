@@ -19,22 +19,16 @@
 #include <sys/syscall.h>
 
 
-
 class SimpleClient : public IClient{
 public:
     explicit SimpleClient(ClientConfig config);
     ~SimpleClient();
 
-    // чтобы сразу начинать и автоматом делать реконект (асинхронный)
     void Start();
-    // sync connect и start
-    void StartWaitConnect();
     void Stop();
-    bool IsConnected();
 
     int SendToSocket(char* data, uint32_t size);
-    void QueueAdd(char* data, int size);
-    // sync send
+    bool QueueAdd(char* data, int size);
     bool QueueSendAll();
     void SwitchAsyncQueue(bool enable);
 
@@ -48,15 +42,12 @@ private:
     EventDispatcher* dispatcher_ = 0;
     BaseEpoll epoll_;
 
-    char buffer_[BUF_READ_SIZE];// for recv data from server
+    // TODO(пока без реализации): for recv data from server
+    char buffer_[BUF_READ_SIZE];
 
-    // WARN: поток и мутекс нужны только для мультипотока
-    // sync push pop для потока
-    // TODO: change to lockfree (чтобы убрать mutex)
     std::thread* queue_th_ = 0;
     // std::condition_variable send_queue_cv_;
     bool async_queue_send_ = false;
-    bool queueSendAllUnsafe();
 
     struct QueueItem {
         char* data;
@@ -67,47 +58,16 @@ private:
     // std::queue<QueueItem> queue_;
     boost::lockfree::spsc_queue<QueueItem> queue_{100};
 
-    // Методы для работы с очередью
-    bool push_item(const QueueItem&& item) {
-        bool ok = queue_.push(item);
-        if (async_queue_send_ && ok) {
-            futex_wake_queue();
-        }
-        return ok;
-    }
-
-    // может поменяться sent_bytes
-    QueueItem& front_item() {
-        return queue_.front();
-    }
-
-    bool pop_item(QueueItem& item) {
-        return queue_.pop(item);
-    }
-
-    bool is_queue_empty() {
-        return queue_.empty();
-    }
+    // обертки для очереди
+    bool push_item(const QueueItem&& item);
+    QueueItem& front_item();
+    bool pop_item(QueueItem& item);
+    bool is_queue_empty();
 
     // для избавления от busy loop при использовании асинхронной очереди
     std::atomic<int> futex_flag_{0};// 0 = sleep, 1 = wakeup
-    void futex_wake_queue() noexcept {
-        futex_flag_.store(1, std::memory_order_release);
-
-        syscall(SYS_futex,
-                reinterpret_cast<int*>(&futex_flag_),
-                FUTEX_WAKE, 1,
-                nullptr, nullptr, 0);
-    }
-
-    void futex_wait_queue() noexcept {
-        futex_flag_.store(0, std::memory_order_relaxed);
-
-        syscall(SYS_futex,
-                reinterpret_cast<int*>(&futex_flag_),
-                FUTEX_WAIT, 0,
-                nullptr, nullptr, 0);
-    }
+    void futex_wake_queue() noexcept;
+    void futex_wait_queue() noexcept;
 };
 
 
