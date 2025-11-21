@@ -28,11 +28,11 @@ public:
     virtual int CountClients() = 0;
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 
+    // для воркеров, тк храним iserver
     virtual double GetBitrate() = 0;
     virtual std::vector<std::unique_ptr<IServer>>* GetWorkers() = 0;
     virtual std::vector<Stats*> GetClientsStats() = 0;
     virtual void AddClientFd(int fd, const Stats &st) = 0;
-
 
     // Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}
@@ -45,7 +45,6 @@ protected:
     ServerConfig conf_;
     string last_error_;
     // Stats stats_;
-
 };
 
 

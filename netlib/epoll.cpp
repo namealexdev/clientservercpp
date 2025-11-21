@@ -93,9 +93,11 @@ void BaseEpoll::ExecLoop()
     while (!need_stop_) {
         int nfds = epoll_wait(epfd_, events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
         if (nfds == -1) {
-            d("epoll timeout")
             if (errno == EINTR) continue;
+
             throw std::runtime_error("epoll_wait");
+            need_stop_ = true;
+            break;
         }
 
         for (int i = 0; i < nfds; ++i) {
@@ -127,9 +129,9 @@ void BaseEpoll::ExecLoop()
             }
 
             // Проверка на неизвестные события (если не попало ни в одно условие)
-            if (!(ev & (EPOLLHUP | EPOLLRDHUP | EPOLLIN | EPOLLOUT))) {
-                d("Unknown event: 0x" << std::hex << ev << " on fd " << fd << std::dec);
-            }
+            // if (!(ev & (EPOLLHUP | EPOLLRDHUP | EPOLLIN | EPOLLOUT))) {
+            //     d("Unknown event: 0x" << std::hex << ev << " on fd " << fd << std::dec);
+            // }
 
         }
     }

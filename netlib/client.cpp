@@ -64,7 +64,7 @@ SimpleClient::SimpleClient(ClientConfig config):
 
     epoll_.SetOnReadAcceptHandler([&](int fd) {
         // accept тут нету
-        assert(socket_ == fd);
+        // assert(socket_ == fd);
         handleData();
     });
 
@@ -82,14 +82,12 @@ SimpleClient::SimpleClient(ClientConfig config):
         if (fd == socket_ && conf_.auto_reconnect){
             epoll_.RemoveFd(fd);
             reconnect();
-            return;
         }else{
             Stop();
-            return;
         }
-        // if (dispatcher_) {
-        //     dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
-        // }
+        if (dispatcher_) {
+            dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
+        }
     });
 
     epoll_.SetOnReadyWriteHandler([&](int fd){
@@ -176,6 +174,7 @@ void SimpleClient::Stop()
     epoll_.RemoveFd(socket_);
     socket_ = -1;
     epoll_.StopEpoll();
+    queue_.reset();
 }
 
 // int SimpleClient::SendToSocket(char *data, uint32_t size)
@@ -212,33 +211,30 @@ void SimpleClient::Stop()
 //     return sent;
 // }
 
-int SimpleClient::SendToSocket(char* d, uint32_t sz)
+int SimpleClient::SendToSocket(char* data, uint32_t size)
 {
     if (socket_ < 0) return -1;
-    if (sz == 0) return 0;
+    if (size == 0)   return 0;
 
-    // single iovec; loop until all sent or EAGAIN
-    size_t total_sent = 0;
-    while (total_sent < sz) {
-        iovec iov;
-        iov.iov_base = d + total_sent;
-        iov.iov_len = sz - total_sent;
-        msghdr msg{};
-        msg.msg_iov = &iov;
-        msg.msg_iovlen = 1;
+    uint32_t net_size = htonl(size);
 
-        ssize_t s = sendmsg(socket_, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
-        if (s < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return static_cast<int>(total_sent);
-            }
-            // std::cerr << sent << " send failed: " << strerror(errno) << std::endl;
+    // 1) первая попытка — одним вызовом sendmsg
+    size_t total_sent;
+    size_t total_needed = sizeof(net_size) + size;
+
+    int r = sendHeaderPayloadOnce(socket_, net_size, data, size, total_sent);
+    if (r < 0) return -1;        // ошибка
+    if (total_sent == 0) return 0; // EAGAIN EWOULDBLOCK
+
+    // всё отправлено?
+    if (total_sent != total_needed) {
+        // досылаем остаток
+        if (sendRemainder(socket_, net_size, data, size, total_sent) < 0)
             return -1;
-        }
-        total_sent += static_cast<size_t>(s);
     }
+
     stats_.addBytes(total_sent);
-    return static_cast<int>(total_sent);
+    return total_sent;
 }
 
 bool SimpleClient::QueueAdd(char *data, int size){
@@ -300,7 +296,7 @@ bool SimpleClient::push_item(const QueueItem &&item) {
     return queue_.push(item);
 }
 
-SimpleClient::QueueItem &SimpleClient::front_item() {
+QueueItem &SimpleClient::front_item() {
     return queue_.front();
 }
 
@@ -353,8 +349,7 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     }
 
     queue_th_ = new std::thread([this](){
-        // std::unique_lock lock(queue_mtx_);
-        d("queue_th_ th start " << async_queue_send_ << " " << (int)state_ << " " << (async_queue_send_ && state_ != ClientState::DISCONNECTED))
+        d("queue_th_ start " << async_queue_send_ << " " << (int)state_ << " " << (async_queue_send_ && state_ != ClientState::DISCONNECTED))
         while (async_queue_send_ && state_ != ClientState::DISCONNECTED) {
             // d("loop start");
 
@@ -377,7 +372,7 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
                 futex_wait_queue();
             }
         }
-        d("----queue_th_ th end")
+        d("queue_th_ end")
     });
 }
 
@@ -393,26 +388,55 @@ void SimpleClient::AddHandlerEvent(EventType type, std::function<void (void *)> 
 }
 
 // ответы от сервера (пока нету)
-void SimpleClient::handleData(){
-    ssize_t n;
-    // это не SubEpoll, тут не нужна статистика
-    // std::cout << "2handle_socket_data " << n << std::endl;
-    n = recv(socket_, buffer_, sizeof(buffer_), 0);
-    if (n > 0) {
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::DataReceived, &n);
+// void SimpleClient::handleData(){
+//     ssize_t n;
+//     // это не SubEpoll, тут не нужна статистика
+//     // std::cout << "2handle_socket_data " << n << std::endl;
+//     n = recv(socket_, buffer_, sizeof(buffer_), 0);
+//     if (n > 0) {
+//         if (dispatcher_) {
+//             dispatcher_->onEvent(EventType::DataReceived, &n);
+//         }
+//         // clientHandler_->onEvent()
+//         // if (on_recv_handler)
+//         //     on_recv_handler(buffer, n);
+//         // if (write_to_stdout(buffer, n) != 0) {
+//         //     throw std::runtime_error("write to stdout");
+//         // }
+//     } else if (n == 0) {
+//         close(socket_);
+//         socket_ = -1;
+//     } else {
+//         throw std::runtime_error("recv from socket");
+//     }
+// }
+
+void SimpleClient::handleData() {
+    // epoll ET - read all
+    while (true) {
+        ssize_t n = recv(socket_, buffer_, sizeof(buffer_), MSG_DONTWAIT);
+        if (n > 0) {
+            if (dispatcher_) {
+                DataReceived d;
+                d.data = buffer_;
+                d.size = n;
+                dispatcher_->onEvent(EventType::DataReceived, &d);
+            }
+            continue;
         }
-        // clientHandler_->onEvent()
-        // if (on_recv_handler)
-        //     on_recv_handler(buffer, n);
-        // if (write_to_stdout(buffer, n) != 0) {
-        //     throw std::runtime_error("write to stdout");
-        // }
-    } else if (n == 0) {
-        close(socket_);
-        socket_ = -1;
-    } else {
-        throw std::runtime_error("recv from socket");
+        if (n == 0) {
+            // Удаленный хост закрыл соединение
+            Stop();
+            break;
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            break;
+        }
+
+        last_error_ = strerror(errno);
+        state_ = ClientState::ERROR;
+        Stop();
+        return;
     }
 }
-

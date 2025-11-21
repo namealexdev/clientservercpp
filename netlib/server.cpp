@@ -151,6 +151,33 @@ void SimpleServer::AddHandlerEvent(EventType type, std::function<void (void *)> 
     dispatcher_->setHandler(type, std::move(handler));
 }
 
+double SimpleServer::GetBitrate(){
+    // поидее только один
+    std::vector<Stats*> stats = GetClientsStats();
+    double bps = 0;
+    int i = 0;
+    for(auto& c: stats){
+        // для accept сокета, тоже добавляем в клиенты чтобы статистику
+        // if (c->ip.empty())continue;
+        d(" " << ++i << " " << c->ip << " " << c->getCalcBitrate());
+        bps += c->getBitrate();
+    }
+    d("full: " << Stats::formatBitrate(bps) << " count:" << i);
+    return bps;
+}
+
+std::vector<std::unique_ptr<IServer> > *SimpleServer::GetWorkers(){
+    return nullptr;
+}
+
+std::vector<Stats *> SimpleServer::GetClientsStats(){
+    std::vector<Stats*> vec;
+    for (auto& c: clients_){
+        vec.emplace_back(&c.second->stats);
+    }
+    return vec;
+}
+
 void SimpleServer::handleAccept(){
     while (true) {
         sockaddr_in client_addr{};
@@ -176,25 +203,6 @@ void SimpleServer::handleAccept(){
         // clients_[client_fd].state = ClientData::HANDSHAKE;
     }
 }
-
-// bool SimpleServer::readIntoBuffer(int fd, ClientBuffer& buf)
-// {
-//     ssize_t n = recv(fd, temp, sizeof(temp), MSG_DONTWAIT);
-    
-//     if (n == 0) { removeClient(fd); return false; }
-//     if (n < 0) {
-//         if (errno != EAGAIN && errno != EWOULDBLOCK) removeClient(fd);
-//         return false;
-//     }
-    
-//     if (!buf.feed(temp, n)) {
-//         std::cerr << "Invalid packet from fd " << fd << std::endl;
-//         removeClient(fd);
-//         return false;
-//     }
-//     return true;
-// }
-
 
 void SimpleServer::handleClientData(int fd)
 {
@@ -275,11 +283,11 @@ void SimpleServer::removeClient(int fd){
 
 MultithreadServer::MultithreadServer(ServerConfig config) :
     IServer(std::move(config)){
-    d("MultithreadServer")
-    accept_epoll_.SetOnReadAcceptHandler([&](int fd) { handleAccept(fd); });
-    // accept_epoll_.SetErrorHandler([&](int fd) {
-    //     state_ = ServerState::ERROR;
-    // });
+    d("MultithreadServer");
+
+    accept_epoll_.SetOnReadAcceptHandler([&](int fd) {
+        handleAccept(fd);
+    });
 
     accept_epoll_.SetOnDisconnectHandler([&](int fd) {
         if (fd > 0){
@@ -302,17 +310,6 @@ bool MultithreadServer::StartListen(int num_workers){
 
     state_ = ServerState::WAITING;
 
-    // worker_client_counts_.resize(num_workers, 0);
-    // for (int i = 0; i < num_workers; ++i) {
-    //     auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
-    //     worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
-    //         --worker_client_counts_[i];
-    //     });
-    //     worker->StartWait();
-    //     workers_.push_back(std::move(worker));
-    //     worker_client_counts_[i] = 0;
-    //     // worker_client_counts_.push_back(0);
-    // }
     worker_client_counts_.clear();
     // worker_client_counts_.reserve(num_workers);
     // worker_client_counts_.resize(num_workers);
@@ -320,8 +317,6 @@ bool MultithreadServer::StartListen(int num_workers){
 
 
     for (int i = 0; i < num_workers; ++i) {
-        // worker_client_counts_.emplace_back(0);
-
         d("create worker " << i)
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
         worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
@@ -331,12 +326,10 @@ bool MultithreadServer::StartListen(int num_workers){
         workers_.push_back(std::move(worker));
     }
 
-
     listen_socket_ = sock;
     accept_epoll_.AddFd(sock);
     accept_epoll_.RunEpoll();
     d("start srv epoll workers " << num_workers)
-
     return true;
 }
 
@@ -349,20 +342,55 @@ void MultithreadServer::Stop(){
     for (auto &w : workers_) {
         w->Stop();
     }
-    // обнулить worker_client_counts_ ???
-
-    // for (auto &th : worker_threads_) {
-    //     if (th.joinable()) th.join();
-    // }
+    worker_client_counts_.clear();
 }
 
 int MultithreadServer::CountClients(){
-    // return std::accumulate(worker_client_counts_.begin(), worker_client_counts_.end(), 0);
     int total = 0;
     for (auto &c : worker_client_counts_) {
         total += c.load();
     }
     return total;
+}
+
+void MultithreadServer::AddClientFd(int fd, const Stats &st){
+    // сюда не должно быть таких конектов
+    assert(false);
+    // accept_epoll_.AddFd(fd);
+    // worker_client_counts_[0] ++;
+    // preClient_socks_.push(std::make_pair(fd, std::move(st)));
+}
+
+double MultithreadServer::GetBitrate(){
+    // d("multi get btr:")
+    double bps = 0;
+    int num_worker = 0;
+    string count_clis;
+    int count = 0;
+    for (auto &w: workers_){
+        std::vector<Stats*> stats = w->GetClientsStats();
+        for(auto& c: stats){
+            d(num_worker+1 << "-  " << c->ip << " " << c->getCalcBitrate());
+            bps += c->getBitrate();
+        }
+        count_clis += std::to_string(num_worker+1) + ":" + std::to_string(worker_client_counts_[num_worker]) + " ";
+        count += w->CountClients();
+        num_worker++;
+    }
+
+    // int i = 1;
+    // for (auto& c: worker_client_counts_)
+    //     count_clis += std::to_string(i++) + ":" + std::to_string(c) + " ";
+    d("full " << Stats::formatBitrate(bps) << " " << count_clis << " count:" << count << "" )
+        return bps;
+}
+
+std::vector<std::unique_ptr<IServer> > *MultithreadServer::GetWorkers(){
+    return &workers_;
+}
+
+std::vector<Stats *> MultithreadServer::GetClientsStats(){
+    return {};
 }
 
 void MultithreadServer::AddHandlerEvent(EventType type, std::function<void (void *)> handler)
@@ -396,14 +424,10 @@ void MultithreadServer::handleAccept(int fd){
         st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
 
         // Находим воркер с минимальным числом клиентов
-        // auto it = std::min_element(worker_client_counts_.begin(), worker_client_counts_.end());
-        auto it = std::min_element(
-            worker_client_counts_.begin(),
-            worker_client_counts_.end(),
+        auto it = std::min_element(worker_client_counts_.begin(), worker_client_counts_.end(),
             [](const std::atomic<int>& a, const std::atomic<int>& b) {
                 return a.load() < b.load();
-            }
-            );
+            });
         int idx = std::distance(worker_client_counts_.begin(), it);
 
         d(client_fd << " accept " << st.ip << " min:" << idx)

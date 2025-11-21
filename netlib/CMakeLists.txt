@@ -18,9 +18,9 @@ add_library(netlib SHARED
   epoll.h epoll.cpp
   server.h server.cpp
   client.h client.cpp
+  client2.h client2.cpp
   utils.h utils.cpp
   packetparser.h
-  client2.h
   handshake.h
 )
 

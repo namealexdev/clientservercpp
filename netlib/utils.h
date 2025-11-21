@@ -16,4 +16,16 @@ bool read_session_uuid(const std::string& filename, std::array<uint8_t, 16>& res
 
 
 std::string uuid_to_string(const std::array<uint8_t, 16>& uuid);
+
+
+int sendHeaderPayloadOnce(int socket,
+    uint32_t& net_size,
+    char* data,
+    size_t size,
+    size_t& total_sent);
+int sendRemainder(int socket,
+    uint32_t& net_size,
+    char* data,
+    size_t size,
+    size_t& total_sent);
 #endif // UTILS_H

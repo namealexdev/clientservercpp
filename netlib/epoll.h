@@ -27,56 +27,6 @@ private:
     std::unordered_map<EventType, std::function<void(void*)>> handlers_;
 };
 
-// #pragma pack(push, 1)
-// // ждем от клиента 20 байт
-// struct ClientHiMsg{
-//     std::array<uint8_t, 16> uuid;
-//     // uint64_t seq_restore = -1;
-// };
-// // ждем от сервера ответ 24 байта
-// struct ServerAnsHiMsg{
-//     enum ClientMode : uint8_t{
-//         ERRUUID,
-//         SEND
-//     };
-//     // подтверждение что точно наш сервер
-//     std::array<uint8_t, 16> client_uuid;
-//     // что клиенту делать дальше
-//     ClientMode client_mode;
-// };
-// static_assert(sizeof(ClientHiMsg) == 16, "Size mismatch");
-// static_assert(sizeof(ServerAnsHiMsg) == 17, "Size mismatch");
-// #pragma pack(pop)
-
-
-/*
- * клиент отправляет uuid
- * ждем тип (что клиенту делать)
- * надо ли отправлять типа ok? если я пишу и клиента и сервер
- */
-// struct Handshake{
-//     Handshake(){
-//         loadUuid();
-//     }
-//     ~Handshake(){
-//         saveUuid();
-//     }
-//     std::array<uint8_t, 16> uuid_;
-
-//     void loadUuid(){
-//         uuid_ = generateUuid();
-//         // save datetime?
-//         // load and save client session uuid
-//         // if (!read_session_uuid("client_session_uuid", uuid_)){
-//         //     uuid_ = generateUuid();
-//         //     saveUuid();
-//         // }
-//     }
-//     void saveUuid(){
-//         // write_session_uuid(uuid_, "client_session_uuid");
-//     }
-// };
-
 // общий простой епол без сокетов - прокидывает события
 class BaseEpoll {
 public:

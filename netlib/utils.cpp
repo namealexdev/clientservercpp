@@ -153,3 +153,69 @@ bool read_session_uuid(const std::string& filename, std::array<uint8_t, 16>& res
 
 //     return true;
 // }
+
+
+int sendHeaderPayloadOnce(int socket,
+                          uint32_t& net_size,
+                          char* data,
+                          size_t size,
+                          size_t& total_sent)
+{
+    iovec iov[2];
+    iov[0].iov_base = &net_size;
+    iov[0].iov_len  = sizeof(net_size);
+    iov[1].iov_base = data;
+    iov[1].iov_len  = size;
+
+    msghdr msg{};
+    msg.msg_iov    = iov;
+    msg.msg_iovlen = 2;
+
+    ssize_t s = sendmsg(socket, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+    if (s < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            total_sent = 0;
+            return 0;  // не можем сейчас
+        }
+        return -1;
+    }
+
+    total_sent = size_t(s);
+    return 0;
+}
+
+int sendRemainder(int socket,
+                  uint32_t& net_size,
+                  char* data,
+                  size_t size,
+                  size_t& total_sent)
+{
+    size_t total_needed = sizeof(net_size) + size;
+    size_t remain = total_needed - total_sent;
+
+    uint8_t* base;
+
+    if (total_sent < sizeof(net_size)) {
+        // досылаем остаток size
+        base = ((uint8_t*)&net_size) + total_sent;
+    } else {
+        // досылаем payload
+        size_t off = total_sent - sizeof(net_size);
+        base = ((uint8_t*)data) + off;
+    }
+
+    while (remain > 0) {
+        ssize_t s = send(socket, base, remain, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (s < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+            return -1;
+        }
+        if (s == 0) return 0;
+
+        base   += s;
+        remain -= s;
+        total_sent += s;
+    }
+
+    return 0;
+}

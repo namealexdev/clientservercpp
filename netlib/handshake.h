@@ -8,144 +8,142 @@
 struct ClientHiMsg {
     std::array<uint8_t, 16> uuid;
 };
-
+enum ClientMode : uint8_t {
+    ERRUUID = 0,
+    SEND    = 1
+};
 struct ServerAnsHiMsg {
-    enum ClientMode : uint8_t {
-        ERRUUID = 0,
-        SEND    = 1
-    };
     std::array<uint8_t, 16> client_uuid;
     ClientMode client_mode;
 };
 #pragma pack(pop)
+#pragma once
 
-class SyncHandshake {
+class HandshakeWrapper {
 public:
-    explicit SyncHandshake(int fd)
-        : fd_(fd)
-    {}
+    template<typename T>
+    static bool sendStruct(int fd, const T& obj, int timeout_ms)
+    {
+        std::vector<uint8_t> payload;
+        serialize(obj, payload);
 
-    // --- отправка и получение строго size+payload блокирующие ---
-    bool sendBlock(const void* data, size_t size) {
-        uint32_t net_size = htonl((uint32_t)size);
+        // size prefix
+        uint32_t size = htonl((uint32_t)payload.size());
 
-        // отправляем size + payload синхронно
-        if (!sendAll(&net_size, sizeof(net_size))) return false;
-        if (!sendAll(data, size)) return false;
-        return true;
+        iovec iov[2]{};
+        iov[0].iov_base = &size;
+        iov[0].iov_len  = sizeof(size);
+        iov[1].iov_base = payload.data();
+        iov[1].iov_len  = payload.size();
+
+        msghdr msg{};
+        msg.msg_iov = iov;
+        msg.msg_iovlen = 2;
+
+        SocketTimeoutGuard tg(fd, timeout_ms);
+
+        ssize_t sent = sendmsg(fd, &msg, 0);
+        if (sent < 0) return false;
+
+        size_t want = sizeof(size) + payload.size();
+        if (sent == want) return true;
+
+        size_t remain = want - sent;
+        uint8_t* tail = payload.data() + (payload.size() - remain);
+        return sendAll(fd, tail, remain);
     }
 
-    bool recvBlock(std::vector<uint8_t>& payload) {
-        uint32_t net_size = 0;
-        if (!recvAll(&net_size, sizeof(net_size))) return false;
+    template<typename T>
+    static bool recvStruct(int fd, T& obj, int timeout_ms)
+    {
+        SocketTimeoutGuard tg(fd, timeout_ms);
+
+        uint32_t net_size;
+        if (!recvAll(fd, &net_size, sizeof(net_size))) return false;
+
         uint32_t size = ntohl(net_size);
 
-        payload.resize(size);
-        if (!recvAll(payload.data(), size)) return false;
+        std::vector<uint8_t> buf(size);
+        if (!recvAll(fd, buf.data(), size)) return false;
+
+        return deserialize(buf.data(), buf.size(), obj);
+    }
+
+    template<typename T>
+    static void serialize(const T& obj, std::vector<uint8_t>& out)
+    {
+        out.resize(sizeof(T));
+        memcpy(out.data(), &obj, sizeof(T));
+    }
+
+    template<typename T>
+    static bool deserialize(const uint8_t* data, size_t size, T& out)
+    {
+        if (size != sizeof(T)) return false;
+        memcpy(&out, data, sizeof(T));
         return true;
-    }
-
-    // --- high-level handshake ---
-    bool clientHandshake(const ClientHiMsg& hi,
-                         ServerAnsHiMsg& ans,
-                         int timeout_ms)
-    {
-        if (!setTimeout(timeout_ms)) return false;
-
-        if (!sendBlock(&hi, sizeof(hi))) return restoreTimeout(), false;
-
-        std::vector<uint8_t> buf;
-        if (!recvBlock(buf)) return restoreTimeout(), false;
-
-        if (buf.size() != sizeof(ServerAnsHiMsg))
-            return restoreTimeout(), false;
-
-        memcpy(&ans, buf.data(), sizeof(ans));
-
-        return restoreTimeout(), true;
-    }
-
-    bool serverHandshake(ClientHiMsg& client_hi,
-                         ServerAnsHiMsg& answer,
-                         int timeout_ms)
-    {
-        if (!setTimeout(timeout_ms)) return false;
-
-        // ждём блокирующе клиентский hello
-        std::vector<uint8_t> buf;
-        if (!recvBlock(buf)) return restoreTimeout(), false;
-
-        if (buf.size() != sizeof(ClientHiMsg))
-            return restoreTimeout(), false;
-
-        memcpy(&client_hi, buf.data(), sizeof(client_hi));
-
-        // далее сервер формирует answer сам
-        if (!sendBlock(&answer, sizeof(answer)))
-            return restoreTimeout(), false;
-
-        return restoreTimeout(), true;
     }
 
 private:
-    int fd_;
-    timeval old_send_{}, old_recv_{};
-    bool has_old_ = false;
-
-    // установка таймаута на время handshake
-    bool setTimeout(int ms) {
-        if (!has_old_) {
-            socklen_t sl = sizeof(old_send_);
-            getsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &old_send_, &sl);
-            getsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &old_recv_, &sl);
-            has_old_ = true;
-        }
-
-        timeval tv{};
-        tv.tv_sec  = ms / 1000;
-        tv.tv_usec = (ms % 1000) * 1000;
-
-        setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-        setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-        return true;
-    }
-
-    bool restoreTimeout() {
-        if (!has_old_) return true;
-        setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &old_send_, sizeof(old_send_));
-        setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &old_recv_, sizeof(old_recv_));
-        has_old_ = false;
-        return true;
-    }
-
-    // блокирующая гарантированная отправка
-    bool sendAll(const void* data, size_t size) {
+    static bool sendAll(int fd, const void* data, size_t size)
+    {
         const uint8_t* p = (const uint8_t*)data;
         size_t left = size;
 
         while (left > 0) {
-            ssize_t s = send(fd_, p, left, 0);
+            ssize_t s = send(fd, p, left, 0);
             if (s <= 0) return false;
+            p += s;
             left -= s;
-            p    += s;
         }
         return true;
     }
 
-    // блокирующее гарантированное получение
-    bool recvAll(void* data, size_t size) {
+    static bool recvAll(int fd, void* data, size_t size)
+    {
         uint8_t* p = (uint8_t*)data;
         size_t left = size;
 
         while (left > 0) {
-            ssize_t r = recv(fd_, p, left, 0);
+            ssize_t r = recv(fd, p, left, 0);
             if (r <= 0) return false;
+            p += r;
             left -= r;
-            p    += r;
         }
         return true;
     }
+
+
+    class SocketTimeoutGuard {
+    public:
+        SocketTimeoutGuard(int fd, int timeout_ms)
+            : fd_(fd)
+        {
+            socklen_t sl = sizeof(old_rcv_);
+            getsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &old_rcv_, &sl);
+            getsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &old_snd_, &sl);
+
+            timeval tv{};
+            tv.tv_sec = timeout_ms / 1000;
+            tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+            setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+        }
+
+        ~SocketTimeoutGuard()
+        {
+            setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &old_rcv_, sizeof(old_rcv_));
+            setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &old_snd_, sizeof(old_snd_));
+        }
+
+    private:
+        int fd_;
+        timeval old_rcv_{};
+        timeval old_snd_{};
+    };
 };
+
 
 
 #endif // HANDSHAKE_H

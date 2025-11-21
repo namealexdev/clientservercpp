@@ -5,7 +5,6 @@
 #include "epoll.h"
 
 #include <cassert>
-#include <condition_variable>
 #include <mutex>
 
 #include "libinclude/iserver.h"
@@ -17,13 +16,6 @@
 #pragma pop_macro("d")
 
 struct ClientData{
-    // только для handshake?
-    // enum ClientState {
-    //     HANDSHAKE,
-    //     DATA
-    // } state;
-    // std::array<uint8_t, 16> client_uuid;
-
     Stats stats;
     PacketParser pktReader_;
     // очередь пакетов для клиента?
@@ -38,39 +30,14 @@ public:
     void Stop();
     int CountClients();
 
-    // нужен для передачи сокетов в многопоточном сервере
+    // нужен для передачи сокетов из MultithreadServer
     void AddClientFd(int fd, const Stats& st);
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
-    double GetBitrate(){
-        // поидее только один
-        std::vector<Stats*> stats = GetClientsStats();
-        double bps = 0;
-        int i = 0;
-        for(auto& c: stats){
-            // для accept сокета, тоже добавляем в клиенты чтобы статистику
-            // if (c->ip.empty())continue;
-            d(" " << ++i << " " << c->ip << " " << c->getCalcBitrate());
-            bps += c->getBitrate();
-        }
-        d("full: " << Stats::formatBitrate(bps) << " count:" << i);
-        return bps;
-        // Stats& stats = GetStats();
-        // stats.calcBitrate();
-        // d("sim get btr " << stats.getBitrate() << " " << stats.total_bytes << "(" << stats.ip << ")")
-        // return stats.getBitrate();
-    };
-    std::vector<std::unique_ptr<IServer>>* GetWorkers(){
-        return nullptr;
-    };
-    std::vector<Stats*> GetClientsStats(){
-        std::vector<Stats*> vec;
-        for (auto& c: clients_){
-            vec.emplace_back(&c.second->stats);
-        }
-        return vec;
-    }
+    double GetBitrate();;
+    std::vector<std::unique_ptr<IServer>>* GetWorkers();;
+    std::vector<Stats*> GetClientsStats();
 
 private:
     void handleAccept(); // принимает клиентов
@@ -85,9 +52,6 @@ private:
     std::unordered_map<int, std::shared_ptr<ClientData>> clients_;
     //for add client (from other thread when MultithreadServer) and erace
     std::mutex clients_mtx_;
-
-    // boost::lockfree::queue<std::pair<int, Stats>> pending_clients_{1024};
-    // int eventfd_add_client_ = -1;
 };
 
 class MultithreadServer : public IServer{
@@ -98,43 +62,11 @@ public:
     void Stop();
     int CountClients();
 
-    void AddClientFd(int fd, const Stats &st){
-        // сюда не должно быть таких конектов
-        assert(false);
-        // accept_epoll_.AddFd(fd);
-        // worker_client_counts_[0] ++;
-        // preClient_socks_.push(std::make_pair(fd, std::move(st)));
-    }
+    void AddClientFd(int fd, const Stats &st);
 
-    double GetBitrate(){
-        // d("multi get btr:")
-        double bps = 0;
-        int num_worker = 0;
-        string count_clis;
-        int count = 0;
-        for (auto &w: workers_){
-            std::vector<Stats*> stats = w->GetClientsStats();
-            for(auto& c: stats){
-                d(num_worker+1 << "-  " << c->ip << " " << c->getCalcBitrate());
-                bps += c->getBitrate();
-            }
-            count_clis += std::to_string(num_worker+1) + ":" + std::to_string(worker_client_counts_[num_worker]) + " ";
-            count += w->CountClients();
-            num_worker++;
-        }
-
-        // int i = 1;
-        // for (auto& c: worker_client_counts_)
-        //     count_clis += std::to_string(i++) + ":" + std::to_string(c) + " ";
-        d("full " << Stats::formatBitrate(bps) << " " << count_clis << " count:" << count << "" )
-        return bps;
-    };
-    std::vector<std::unique_ptr<IServer>>* GetWorkers(){
-        return &workers_;
-    };
-    std::vector<Stats*> GetClientsStats(){
-        return {};
-    }
+    double GetBitrate();;
+    std::vector<std::unique_ptr<IServer>>* GetWorkers();;
+    std::vector<Stats*> GetClientsStats();
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
@@ -143,10 +75,11 @@ private:
 
     int listen_socket_ = -1;
     EventDispatcher* dispatcher_ = 0;
-    BaseEpoll accept_epoll_; // только для accept
+    BaseEpoll accept_epoll_;
 
     std::vector<std::unique_ptr<IServer>> workers_;
-    std::vector<std::atomic_int> worker_client_counts_; // для балансировки(чтобы без atomic)
+    // для балансировки клиентов из воркеров
+    std::vector<std::atomic_int> worker_client_counts_;
 };
 
 #endif // SERVER_H
