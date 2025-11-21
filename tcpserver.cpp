@@ -25,14 +25,15 @@ void server_app(){
     auto fac = std::make_unique<SinglethreadFactory>();
     ServerConfig srv_conf{
         .port = 12345,
-        .max_connections = 10
+        .max_connections = 10,
+        .worker_threads = 4
     };
     std::unique_ptr<IServer> srv = fac->createServer(srv_conf);
     if (!srv){
         std::cerr << "Failed to create server " << std::endl;
         return;
     }
-    if (!srv->StartListen(4)) {
+    if (!srv->StartListen()) {
         std::cerr << "Failed to start server. err:" << srv->GetLastError() << std::endl;
         return;
     }

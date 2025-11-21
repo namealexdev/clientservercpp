@@ -39,8 +39,6 @@ public:
         return state_ == ClientState::WAITING || state_ == ClientState::SENDING;
     }
 
-    string GetClientState();
-
     virtual int SendToSocket(char* d, uint32_t sz) = 0;
     virtual void SwitchAsyncQueue(bool enable) = 0;
     virtual bool QueueAdd(char* d, int sz) = 0;
@@ -48,6 +46,8 @@ public:
 
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 
+    ClientState ClientState();
+    string GetClientState();
     Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}
 
@@ -56,7 +56,7 @@ protected:
 
     ClientConfig conf_;
     string last_error_;
-    ClientState state_ = ClientState::DISCONNECTED;
+    enum ClientState state_ = ClientState::DISCONNECTED;
 
     Stats stats_;
 };

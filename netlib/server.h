@@ -25,7 +25,7 @@ struct ClientData{
 class SimpleServer : public IServer{
 public:
     SimpleServer(ServerConfig config, EventDispatcher* e = nullptr);
-    bool StartListen(int num_workers = 0);
+    bool StartListen();
     void StartWait();
     void Stop();
     int CountClients();
@@ -35,8 +35,8 @@ public:
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);
 
-    double GetBitrate();;
-    std::vector<std::unique_ptr<IServer>>* GetWorkers();;
+    double GetBitrate();
+    std::vector<std::unique_ptr<IServer>>* GetWorkers();
     std::vector<Stats*> GetClientsStats();
 
 private:
@@ -58,14 +58,14 @@ class MultithreadServer : public IServer{
 public:
     explicit MultithreadServer(ServerConfig config);
 
-    bool StartListen(int num_workers = 1);
+    bool StartListen();
     void Stop();
     int CountClients();
 
     void AddClientFd(int fd, const Stats &st);
 
     double GetBitrate();;
-    std::vector<std::unique_ptr<IServer>>* GetWorkers();;
+    std::vector<std::unique_ptr<IServer>>* GetWorkers();
     std::vector<Stats*> GetClientsStats();
 
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler);

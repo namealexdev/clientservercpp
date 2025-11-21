@@ -53,6 +53,11 @@ int IServer::create_listen_socket()
     return sock;
 }
 
+ServerState IServer::ServerState()
+{
+    return state_;
+}
+
 string IServer::GetServerState()
 {
     switch (state_) {
@@ -99,7 +104,7 @@ void SimpleServer::StartWait()
     epoll_.RunEpoll();
 }
 
-bool SimpleServer::StartListen(int num_workers){
+bool SimpleServer::StartListen(){
     auto sock = create_listen_socket();
     if (sock < 0){
         state_ = ServerState::ERROR;
@@ -159,10 +164,10 @@ double SimpleServer::GetBitrate(){
     for(auto& c: stats){
         // для accept сокета, тоже добавляем в клиенты чтобы статистику
         // if (c->ip.empty())continue;
-        d(" " << ++i << " " << c->ip << " " << c->getCalcBitrate());
-        bps += c->getBitrate();
+        d(" " << ++i << " " << c->GetIP() << " " << c->GetFormattedBitrates());
+        bps += c->GetRecvBitrate();
     }
-    d("full: " << Stats::formatBitrate(bps) << " count:" << i);
+    d("full recv: " << Stats::FormatBitrate(bps) << " count:" << i);
     return bps;
 }
 
@@ -191,9 +196,9 @@ void SimpleServer::handleAccept(){
         char ip_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
         Stats st;
-        st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
+        st.SetIP(std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port)));
 
-        d(client_fd << " sim accept " << st.ip);
+        d(client_fd << " sim accept " << st.GetIP());
 
         // std::lock_guard<std::mutex> lock(clients_mtx_);
         // clients_.emplace(client_fd, ClientData{});
@@ -227,8 +232,7 @@ void SimpleServer::handleClientData(int fd)
             removeClient(fd);
             return;
         }
-        // stats_.addBytes(n);
-        stats.addBytes(szrecv);
+        stats.AddRecvBytes(szrecv);
         // d("add bytes:" << n)
 
         int processed = 0;
@@ -298,8 +302,9 @@ MultithreadServer::MultithreadServer(ServerConfig config) :
     // accept_epoll_.SetOnReadyWriteHandler()
 }
 
-bool MultithreadServer::StartListen(int num_workers){
-    if (num_workers == 0){
+bool MultithreadServer::StartListen(){
+    if (conf_.worker_threads == 0){
+        d("WARN: not set count worker threads !!!")
         return false;
     }
     auto sock = create_listen_socket();
@@ -313,10 +318,10 @@ bool MultithreadServer::StartListen(int num_workers){
     worker_client_counts_.clear();
     // worker_client_counts_.reserve(num_workers);
     // worker_client_counts_.resize(num_workers);
-    worker_client_counts_ = std::vector<std::atomic<int>>(num_workers);
+    worker_client_counts_ = std::vector<std::atomic<int>>(conf_.worker_threads);
 
 
-    for (int i = 0; i < num_workers; ++i) {
+    for (int i = 0; i < conf_.worker_threads; ++i) {
         d("create worker " << i)
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
         worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
@@ -329,7 +334,7 @@ bool MultithreadServer::StartListen(int num_workers){
     listen_socket_ = sock;
     accept_epoll_.AddFd(sock);
     accept_epoll_.RunEpoll();
-    d("start srv epoll workers " << num_workers)
+    d("start srv epoll workers " << conf_.worker_threads)
     return true;
 }
 
@@ -370,8 +375,8 @@ double MultithreadServer::GetBitrate(){
     for (auto &w: workers_){
         std::vector<Stats*> stats = w->GetClientsStats();
         for(auto& c: stats){
-            d(num_worker+1 << "-  " << c->ip << " " << c->getCalcBitrate());
-            bps += c->getBitrate();
+            d(num_worker+1 << "-  " << c->GetIP() << " " << c->GetFormattedBitrates());
+            bps += c->GetRecvBitrate();
         }
         count_clis += std::to_string(num_worker+1) + ":" + std::to_string(worker_client_counts_[num_worker]) + " ";
         count += w->CountClients();
@@ -381,7 +386,7 @@ double MultithreadServer::GetBitrate(){
     // int i = 1;
     // for (auto& c: worker_client_counts_)
     //     count_clis += std::to_string(i++) + ":" + std::to_string(c) + " ";
-    d("full " << Stats::formatBitrate(bps) << " " << count_clis << " count:" << count << "" )
+    d("full recv: " << Stats::FormatBitrate(bps) << " " << count_clis << " count:" << count << "" )
         return bps;
 }
 
@@ -421,7 +426,7 @@ void MultithreadServer::handleAccept(int fd){
         char ip_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, INET_ADDRSTRLEN);
         Stats st;
-        st.ip = std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port));
+        st.SetIP(std::string(ip_str) + ":" + std::to_string(ntohs(client_addr.sin_port)));
 
         // Находим воркер с минимальным числом клиентов
         auto it = std::min_element(worker_client_counts_.begin(), worker_client_counts_.end(),
@@ -430,7 +435,7 @@ void MultithreadServer::handleAccept(int fd){
             });
         int idx = std::distance(worker_client_counts_.begin(), it);
 
-        d(client_fd << " accept " << st.ip << " min:" << idx)
+        d(client_fd << " accept " << st.GetIP() << " min:" << idx)
 
         if (dispatcher_){
             dispatcher_->onEvent(EventType::ClientConnected);

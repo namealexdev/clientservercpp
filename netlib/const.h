@@ -16,7 +16,7 @@
 // #include <threadpool.h>
 
 using std::string;
-
+#include "libinclude/eventtype.h"
 #include "utils.h"
 #include "libinclude/stats.h"
 

@@ -10,6 +10,7 @@ struct ServerConfig{
     string host = "0.0.0.0";
     int port = 12345;
     int max_connections = 10;
+    int worker_threads = 0;
     // int recv_buffer_size = 1 * 1024 * 1024; // 100 MiB
 };
 
@@ -23,7 +24,7 @@ class IServer{
 public:
     IServer(ServerConfig&& c) : conf_(std::move(c)) {};
     virtual ~IServer() = default;
-    virtual bool StartListen(int num_workers = 0) = 0; // wait accept
+    virtual bool StartListen() = 0; // wait accept
     virtual void Stop() = 0;
     virtual int CountClients() = 0;
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
@@ -37,9 +38,10 @@ public:
     // Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}
     string GetServerState();
+    ServerState ServerState();
 
 protected:
-    ServerState state_ = ServerState::STOPPED;
+    enum ServerState state_ = ServerState::STOPPED;
     int create_listen_socket();
 
     ServerConfig conf_;

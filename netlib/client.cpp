@@ -46,6 +46,11 @@ int IClient::create_socket_connect()
     return sock;
 }
 
+ClientState IClient::ClientState()
+{
+    return state_;
+}
+
 string IClient::GetClientState()
 {
     switch (state_) {
@@ -233,7 +238,7 @@ int SimpleClient::SendToSocket(char* data, uint32_t size)
             return -1;
     }
 
-    stats_.addBytes(total_sent);
+    stats_.AddSendBytes(total_sent);
     return total_sent;
 }
 

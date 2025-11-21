@@ -10,6 +10,7 @@ add_library(netlib SHARED
   libinclude/stats.h
   libinclude/iclient.h
   libinclude/iserver.h
+  libinclude/eventtype.h
 
   stats.cpp
   netlib.cpp
@@ -22,6 +23,7 @@ add_library(netlib SHARED
   utils.h utils.cpp
   packetparser.h
   handshake.h
+
 )
 
 target_include_directories(netlib PUBLIC

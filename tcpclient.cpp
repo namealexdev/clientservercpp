@@ -22,11 +22,11 @@ void client_app(){
     std::unique_ptr<IClient> cli = fac->createClient(cli_conf);
 
     cli->Start();
-    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
 
     while(cli->GetClientState() != "WAITING"){
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        d("0 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+        d("0 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
     }
 
     std::vector<char> data1(10'000'000, 'A');// 10MB
@@ -58,10 +58,10 @@ void client_app(){
     });
     while(cli->GetClientState() != "WAITING"){
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        d("1 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate() << " " << stop);
+        d("1 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate() << " " << stop);
     }
 
-    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
 
     // v2
     stop = false;
@@ -78,9 +78,9 @@ void client_app(){
 
     while(cli->GetClientState() != "WAITING"){
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        d("2 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+        d("2 cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
     }
-    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
     d("after send");
 }
 
@@ -97,7 +97,7 @@ void client_stress(){
     std::unique_ptr<IClient> cli = fac->createClient(cli_conf);
 
     cli->Start();
-    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getBitrate());
+    d("cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
 
     std::vector<char> data100(100'000'000, 'A');// 1Gb
 
@@ -107,7 +107,7 @@ void client_stress(){
     new std::thread([&](){
         while (1){
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            d("[stress] cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().getCalcBitrate());
+            d("[stress] cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
         }
     });
 

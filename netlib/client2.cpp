@@ -51,7 +51,7 @@ int SimpleClientEventfd::SendToSocket(char* data, uint32_t size)
             return -1;
     }
 
-    stats_.addBytes(total_sent);
+    stats_.AddSendBytes(total_sent);
     return total_sent;
 }
 
@@ -186,7 +186,7 @@ void SimpleClientEventfd::handleData()
     while (true) {
         ssize_t n = recv(socket_, buffer_, sizeof(buffer_), MSG_DONTWAIT);
         if (n > 0) {
-            stats_.addBytes(n);
+            stats_.AddRecvBytes(n);
             continue;
         }
         if (n == 0) {
