@@ -18,7 +18,6 @@ target_link_libraries(client Boost::boost)
 add_executable(server tcpserver.cpp ${COMMON_SOURCES})
 target_link_libraries(server netlib)
 
-
 #tests
 find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 
@@ -27,7 +26,6 @@ add_executable(tests tests.cpp ${COMMON_SOURCES}
 target_link_libraries(tests
     netlib
     Boost::unit_test_framework
-    pthread
 )
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address") # Для C++

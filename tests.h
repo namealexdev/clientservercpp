@@ -23,7 +23,7 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms = 5000) {
 
 }
 
-template<typename ServerImpl>
+template<typename ServerFactory, typename ClientFactory>
 struct ServerClientFixture {
     ServerClientFixture() {
         // Настройка конфигурации
@@ -40,9 +40,11 @@ struct ServerClientFixture {
     }
 
     void SetupServerAndClient() {
-        server = std::make_unique<ServerImpl>(server_config_);
-        // Здесь должен быть ваш клиент
-        // client = std::make_unique<YourClientImpl>(client_config_);
+        server_factory = std::make_unique<ServerFactory>();
+        client_factory = std::make_unique<ClientFactory>();
+
+        server = server_factory->createServer(std::move(server_config_));
+        client = client_factory->createClient(std::move(client_config_));
     }
 
     bool WaitForConnection(int timeout_ms = 3000) {
@@ -65,8 +67,10 @@ struct ServerClientFixture {
 
     ServerConfig server_config_;
     ClientConfig client_config_;
-    std::unique_ptr<ServerImpl> server;
-    std::unique_ptr<IClient> client; // Замените на ваш клиент
+    std::unique_ptr<ServerFactory> server_factory;
+    std::unique_ptr<ClientFactory> client_factory;
+    std::unique_ptr<IServer> server;
+    std::unique_ptr<IClient> client;
 };
 
 #endif // TESTS_H
