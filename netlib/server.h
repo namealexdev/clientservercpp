@@ -44,6 +44,10 @@ private:
     void handleClientData(int fd); // обрабатывает данные от клиента
     void removeClient(int fd); // удаляет клиента из epoll и списка
 
+    // for send
+    bool hasClientSocket(int fd);
+    bool sendToSocket(int fd, char* data, uint32_t size);
+
     int listen_socket_ = -1;
     EventDispatcher* dispatcher_ = 0;
     BaseEpoll epoll_;
@@ -53,6 +57,14 @@ private:
     //for add client (from other thread when MultithreadServer) and erace
     std::mutex clients_mtx_;
 };
+
+/*
+ * как будет bidirectional communication
+ * нам приходит событие на то что получили данные и мы записываем ответ сразу
+ * то есть можно передавать ссылку на сокет
+ *
+ * на всякий случай сделаем поиск
+ */
 
 class MultithreadServer : public IServer{
 public:
@@ -64,7 +76,10 @@ public:
 
     void AddClientFd(int fd, const Stats &st);
 
-    double GetBitrate();;
+    // send: search worker by client_fd
+    // int _SendToClient(int client_fd, char* data, uint32_t size);
+
+    double GetBitrate();
     std::vector<std::unique_ptr<IServer>>* GetWorkers();
     std::vector<Stats*> GetClientsStats();
 

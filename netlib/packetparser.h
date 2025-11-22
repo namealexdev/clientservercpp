@@ -49,8 +49,6 @@ struct PacketParser {
                     uint32_t net_size;
                     std::memcpy(&net_size, data.data(), sizeof(net_size));// ровно 4 байта
 
-                    net_size = (uint32_t)*data.data();
-
                     payload_size = ntohl(net_size);
 
                     // TODO(): проверка на максимальый или очень большой размер

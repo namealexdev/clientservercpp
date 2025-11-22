@@ -27,8 +27,7 @@ template<typename ServerImpl>
 struct ServerClientFixture {
     ServerClientFixture() {
         // Настройка конфигурации
-        server_config_.host = "127.0.0.1";
-        server_config_.port = 54321; // Используем другой порт для тестов
+        server_config_.port = 54321;
 
         client_config_.server_ip = "127.0.0.1";
         client_config_.server_port = 54321;

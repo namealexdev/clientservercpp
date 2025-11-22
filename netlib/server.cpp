@@ -153,7 +153,11 @@ void SimpleServer::AddHandlerEvent(EventType type, std::function<void (void *)> 
     if (!dispatcher_){
         dispatcher_ = new EventDispatcher;
     }
-    dispatcher_->setHandler(type, std::move(handler));
+    if (handler){
+        dispatcher_->unsetHandler(type);
+    }else{
+        dispatcher_->setHandler(type, std::move(handler));
+    }
 }
 
 double SimpleServer::GetBitrate(){
@@ -403,7 +407,11 @@ void MultithreadServer::AddHandlerEvent(EventType type, std::function<void (void
     if (!dispatcher_){
         dispatcher_ = new EventDispatcher;
     }
-    dispatcher_->setHandler(type, std::move(handler));
+    if (handler){
+        dispatcher_->unsetHandler(type);
+    }else{
+        dispatcher_->setHandler(type, std::move(handler));
+    }
 }
 
 void MultithreadServer::handleAccept(int fd){
@@ -446,3 +454,57 @@ void MultithreadServer::handleAccept(int fd){
         worker_client_counts_[idx]++;
     }
 }
+
+bool SimpleServer::hasClientSocket(int fd)
+{
+    return clients_.find(fd) != clients_.end();
+}
+
+bool SimpleServer::sendToSocket(int fd, char* data, uint32_t size)
+{
+    if (fd < 0 || size == 0) return false;
+
+    uint32_t net_size = htonl(size);
+
+    // Send header and payload together
+    size_t total_sent;
+    size_t total_needed = sizeof(net_size) + size;
+
+    int r = sendHeaderPayloadOnce(fd, net_size, data, size, total_sent);
+    if (r < 0) return false;        // error
+    if (total_sent == 0) return false; // EAGAIN EWOULDBLOCK
+
+    // If not all sent, send remainder
+    if (total_sent != total_needed) {
+        if (sendRemainder(fd, net_size, data, size, total_sent) < 0){
+            return false;
+        }
+    }
+
+    // Find client and update stats
+    std::shared_ptr<ClientData> cli;
+    {
+        std::lock_guard<std::mutex> lock(clients_mtx_);
+        auto it = clients_.find(fd);
+        if (it != clients_.end()) {
+            cli = it->second;
+        }
+    }
+
+    if (cli) {
+        cli->stats.AddSendBytes(total_sent);
+    }
+
+    return true;
+}
+
+// int MultithreadServer::_SendToClient(int client_fd, char* data, uint32_t size)
+// {
+//     // find worker for add send queue?
+//     for (auto &w: workers_){
+//         if (w->hasClientSocket(client_fd)){
+//             return w->sendToSocket(client_fd, data, size);
+//         }
+//     }
+//     return -1;
+// }
