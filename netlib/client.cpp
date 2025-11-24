@@ -270,7 +270,7 @@ bool SimpleClient::QueueSendAll(){
         if (remaining > 0) {
             int sent = SendToSocket(cur.data + cur.sent_bytes,
                                     remaining);
-
+            // d("send to socket " << sent)
             if (sent == -1) {
                 state_ = ClientState::ERROR;
                 return false; // ошибка
@@ -427,6 +427,7 @@ void SimpleClient::handleData() {
                 d.size = n;
                 dispatcher_->onEvent(EventType::DataReceived, &d);
             }
+            stats_.AddRecvBytes(n);
             continue;
         }
         if (n == 0) {

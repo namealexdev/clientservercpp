@@ -107,7 +107,7 @@ void client_stress(){
     new std::thread([&](){
         while (1){
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            d("[stress] cli [" << cli->GetClientState() << "] btr:" << cli->GetStats().GetTotalBitrate());
+            d("[stress] cli [" << cli->GetClientState() << "] " << cli->GetStats().GetFormattedBitrates());
         }
     });
 

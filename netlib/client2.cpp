@@ -129,6 +129,7 @@ void SimpleClientEventfd::closeSocket()
 
 bool SimpleClientEventfd::enableEpollOut()
 {
+    state_ = ClientState::WAITING;
     if (socket_ < 0) return false;
     epoll_event ev{};
     ev.events  = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR;
@@ -186,6 +187,12 @@ void SimpleClientEventfd::handleData()
     while (true) {
         ssize_t n = recv(socket_, buffer_, sizeof(buffer_), MSG_DONTWAIT);
         if (n > 0) {
+            if (dispatcher_) {
+                DataReceived d;
+                d.data = buffer_;
+                d.size = n;
+                dispatcher_->onEvent(EventType::DataReceived, &d);
+            }
             stats_.AddRecvBytes(n);
             continue;
         }
@@ -206,6 +213,9 @@ void SimpleClientEventfd::handleData()
 void SimpleClientEventfd::onSocketClosed()
 {
     closeSocket();
+    if (dispatcher_) {
+        dispatcher_->onEvent(EventType::ClientDisconnected, &socket_);
+    }
     if (conf_.auto_reconnect){
         reconnect();
     }else {
@@ -272,6 +282,7 @@ void SimpleClientEventfd::epollLoop()
             // отправка по event, когда делаем push и когда EPOLLOUT + auto_send
             // но если часто делать push, то постоянно будут поступать сюда события ...
             if (fd == event_fd_) {
+                state_ = ClientState::SENDING;
                 uint64_t v;
                 read(event_fd_, &v, sizeof(v));
                 QueueSendAll();
@@ -287,6 +298,7 @@ void SimpleClientEventfd::epollLoop()
                     handleData();
                 }
                 if (ev & EPOLLOUT && conf_.auto_send){
+                    state_ = ClientState::SENDING;
                     QueueSendAll();
                 }
             }
