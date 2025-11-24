@@ -17,7 +17,8 @@ std::unique_ptr<IServer> MultithreadFactory::createServer(ServerConfig conf) {
 }
 
 std::unique_ptr<IClient> MultithreadFactory::createClient(ClientConfig conf) {
-    auto client = std::make_unique<SimpleClient>(std::move(conf));
-    client->SwitchAsyncQueue(true);
-    return client;
+    return std::make_unique<SimpleClient>(std::move(conf));
+    // auto client = std::make_unique<SimpleClient>(std::move(conf));
+    // client->SwitchAsyncQueue(true);
+    // return client;
 }

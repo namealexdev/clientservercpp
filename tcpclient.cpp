@@ -136,9 +136,83 @@ void client_stress(){
 
 }
 
+
+
+// benchmark.cpp
+#include <chrono>
+#include <libinclude/netlib.h>
+
+template<typename ClientFactory>
+double benchmark_client(int message_count, int message_size) {
+    auto factory = std::make_unique<ClientFactory>();
+
+    ClientConfig config;
+    config.server_ip = "127.0.0.1";
+    config.server_port = 12345;
+    config.auto_send = true;
+
+    std::unique_ptr<IClient> client = factory->createClient(config);
+    client->Start();
+
+    // Ждём подключения
+    while (!client->IsConnected()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    std::vector<char> data(message_size, 'X');
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < message_count; i++) {
+        client->QueueAdd(data.data(), data.size());
+    }
+
+    // Ждём завершения отправки
+    auto& stats = client->GetStats();
+    while (stats.GetTotalBitrate() < message_count * message_size) {
+        std::cout << stats.GetTotalBitrate() << " / " << message_count * message_size << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    double elapsed = std::chrono::duration<double>(end - start).count();
+
+    client->Stop();
+
+    return (message_count * message_size) / elapsed / 1e6; // MB/s
+}
+
+template<typename ClientFactory>
+int client_bench() {
+    // Запустите сервер отдельно!
+
+    std::cout << "=== Client Performance Test ===" << std::endl;
+
+    // Тест 1: Маленькие сообщения
+    double speed1_v1 = benchmark_client<ClientFactory>(10000, 100);
+    double speed1_v2 = benchmark_client<ClientFactory>(10000, 100);
+
+    std::cout << "Small messages (100 bytes):" << std::endl;
+    std::cout << "  SimpleClient:        " << speed1_v1 << " MB/s" << std::endl;
+    std::cout << "  SimpleClientEventfd: " << speed1_v2 << " MB/s" << std::endl;
+
+    // Тест 2: Большие сообщения
+    double speed2_v1 = benchmark_client<ClientFactory>(1000, 100000);
+    double speed2_v2 = benchmark_client<ClientFactory>(1000, 100000);
+
+    std::cout << "Large messages (100 KB):" << std::endl;
+    std::cout << "  SimpleClient:        " << speed2_v1 << " MB/s" << std::endl;
+    std::cout << "  SimpleClientEventfd: " << speed2_v2 << " MB/s" << std::endl;
+
+    return 0;
+}
+
+
 int main()
 {
-    client_stress();
-    // client_app();
+    // client_stress();
+
+    client_bench<SinglethreadFactory>();
+    client_bench<MultithreadFactory>();
     return 0;
 }
