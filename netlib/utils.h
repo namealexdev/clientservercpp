@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string>
 #include <vector>
+#include <array>
 
 int getRandomNumber(int from, int to);
 std::vector<uint8_t> generateRandomData(size_t size);

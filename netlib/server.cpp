@@ -53,7 +53,7 @@ int IServer::create_listen_socket()
     return sock;
 }
 
-ServerState IServer::ServerState()
+ServerState IServer::GetServerStateEnum()
 {
     return state_;
 }

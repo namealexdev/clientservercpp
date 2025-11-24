@@ -55,7 +55,7 @@ struct ServerClientFixture {
 
     bool WaitForClientState(ClientState expected_state, int timeout_ms = 3000) {
         return TestUtils::WaitForCondition([this, expected_state]() {
-            return client->ClientState() == expected_state;
+            return client->GetClientStateEnum() == expected_state;
         }, timeout_ms);
     }
 

@@ -38,7 +38,7 @@ public:
     // Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}
     string GetServerState();
-    ServerState ServerState();
+    ServerState GetServerStateEnum();
 
 protected:
     enum ServerState state_ = ServerState::STOPPED;
