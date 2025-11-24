@@ -162,16 +162,21 @@ double benchmark_client(int message_count, int message_size) {
     std::vector<char> data(message_size, 'X');
 
     auto start = std::chrono::high_resolution_clock::now();
-
+    uint64_t should = 0;
     for (int i = 0; i < message_count; i++) {
-        client->QueueAdd(data.data(), data.size());
+        if(!client->QueueAdd(data.data(), data.size())){
+            // std::cout << "fail add" << std::endl;
+        }else{
+            should += message_size;
+        }
     }
 
     // Ждём завершения отправки
     auto& stats = client->GetStats();
-    while (stats.GetTotalBitrate() < message_count * message_size) {
-        std::cout << stats.GetTotalBitrate() << " / " << message_count * message_size << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+    while (stats.GetTotalBitrate() < should) {
+        stats.CalcBitrate();
+        // std::cout << stats.GetTotalBitrate() << " / " <<should << " " << message_count * message_size << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     auto end = std::chrono::high_resolution_clock::now();
