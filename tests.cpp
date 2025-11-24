@@ -6,7 +6,7 @@ typedef boost::mpl::list<SinglethreadFactory, MultithreadFactory> ServerTypes;
 typedef boost::mpl::list<SinglethreadFactory, MultithreadFactory> ClientTypes;
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestHandshakeSize, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -23,11 +23,13 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestHandshakeSize, FactoryTypes, ServerTypes,
     BOOST_REQUIRE_MESSAGE(!stats.empty(), "Нет статистики по клиентам");
 
     // Предположим, что у Stats есть поле handshake_bytes
+    // BOOST_CHECK_MESSAGE(stats[0].handshake_bytes > 0, "Размер handshake должен быть больше 0");
+}
     // BOOST_CHECK_EQUAL(stats[0]->handshake_bytes, EXPECTED_HANDSHAKE_SIZE);
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestStopBeforeSend, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->client_config_.auto_send = false; // Отключаем автоотправку
     this->SetupServerAndClient();
@@ -52,7 +54,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestStopBeforeSend, FactoryTypes, ServerTypes,
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestReconnect, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->client_config_.auto_reconnect = true;
     this->SetupServerAndClient();
@@ -75,7 +77,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestReconnect, FactoryTypes, ServerTypes,
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestAutoSend, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->client_config_.auto_send = true;
     this->SetupServerAndClient();
@@ -96,7 +98,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestAutoSend, FactoryTypes, ServerTypes,
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestClientStates, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -116,7 +118,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestClientStates, FactoryTypes, ServerTypes,
 
 // Дополнительные тесты, основанные на примерах и требованиях
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestBasicSendReceive, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -143,7 +145,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestBasicSendReceive, FactoryTypes, ServerTypes
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestAsyncQueue, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -172,7 +174,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestAsyncQueue, FactoryTypes, ServerTypes,
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestServerStopWithClients, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -191,7 +193,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestServerStopWithClients, FactoryTypes, Server
 }
 
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestClientStopAndRestart, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -214,7 +216,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestClientStopAndRestart, FactoryTypes, ServerT
 
 // Тест для двунаправленной связи (если сервер поддерживает отправку клиенту)
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestServerSendToClient, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -257,7 +259,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestServerSendToClient, FactoryTypes, ServerTyp
 
 // Тест на двунаправленную связь с использованием асинхронной очереди
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestBidirectionalCommunication, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -285,7 +287,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestBidirectionalCommunication, FactoryTypes, S
 
 // Тест на корректное закрытие соединений
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestGracefulShutdown, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -316,7 +318,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestGracefulShutdown, FactoryTypes, ServerTypes
 
 // Тест на обработку разрыва соединения клиентом
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestClientForcedDisconnect, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -344,7 +346,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestClientForcedDisconnect, FactoryTypes, Serve
 
 // Тест на обработку разрыва соединения сервером
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestServerForcedDisconnect, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -368,7 +370,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestServerForcedDisconnect, FactoryTypes, Serve
 
 // Тест на передачу данных разных размеров
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestVariableDataSizes, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -407,7 +409,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestVariableDataSizes, FactoryTypes, ServerType
 
 // Тест на обработку пакетов на границах буфера
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestBoundaryPackets, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -441,7 +443,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestBoundaryPackets, FactoryTypes, ServerTypes,
 
 // Тест на обработку ошибок подключения
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestConnectionErrors, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     // Используем недоступный порт для тестирования ошибки подключения
     this->client_config_.server_port = 65535; // Недоступный порт
@@ -462,7 +464,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestConnectionErrors, FactoryTypes, ServerTypes
 
 // Тест на реконнект с auto_reconnect
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestAutoReconnectFeature, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->client_config_.auto_reconnect = true;
     this->SetupServerAndClient();
@@ -494,7 +496,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestAutoReconnectFeature, FactoryTypes, ServerT
 
 // Тест на нагрузку - отправка большого объема данных
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestHighLoad, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -522,7 +524,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestHighLoad, FactoryTypes, ServerTypes,
 
 // Тест на обработку ошибок подключения (повторно добавлен)
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestConnectionErrors2, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     // Используем недоступный порт для тестирования ошибки подключения
     this->client_config_.server_port = 65535; // Недоступный порт
@@ -543,7 +545,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestConnectionErrors2, FactoryTypes, ServerType
 
 // Тест на одновременное подключение нескольких клиентов
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestMultipleClients, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -592,7 +594,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestMultipleClients, FactoryTypes, ServerTypes,
 
 // Тест на обработку событий
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestEventHandlers, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -626,7 +628,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestEventHandlers, FactoryTypes, ServerTypes,
 
 // Тест на корректное завершение работы с очередями
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestQueueOperations, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 
@@ -661,7 +663,7 @@ BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestQueueOperations, FactoryTypes, ServerTypes,
 
 // Тест на статистику
 BOOST_FIXTURE_TEST_CASE_TEMPLATE(TestStats, FactoryTypes, ServerTypes,
-                                 (ServerClientFixture<typename FactoryTypes, typename FactoryTypes>)) {
+                                 (ServerClientFixture<FactoryTypes, FactoryTypes>)) {
 
     this->SetupServerAndClient();
 

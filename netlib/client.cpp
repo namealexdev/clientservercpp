@@ -46,7 +46,7 @@ int IClient::create_socket_connect()
     return sock;
 }
 
-ClientState IClient::ClientState()
+ClientState IClient::GetClientStateEnum()
 {
     return state_;
 }

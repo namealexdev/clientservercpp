@@ -46,7 +46,7 @@ public:
 
     virtual void AddHandlerEvent(EventType type, std::function<void(void*)> handler) = 0;
 
-    ClientState ClientState();
+    ClientState GetClientStateEnum();
     string GetClientState();
     Stats& GetStats(){return stats_;}
     std::string_view GetLastError(){return last_error_;}
