@@ -44,7 +44,7 @@ bool BaseEpoll::AddFd(int fd)
 
 //Segmentation fault (core dumped)
 void BaseEpoll::EnableWriteEvents(int fd) {
-    d("EnableWriteEvents " << epfd_)
+    // d("EnableWriteEvents " << epfd_)
     epoll_event ev{};
     ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR;
     ev.data.fd = fd;
@@ -52,7 +52,7 @@ void BaseEpoll::EnableWriteEvents(int fd) {
 }
 
 void BaseEpoll::DisableWriteEvents(int fd) {
-    d("DisableWriteEvents " << epfd_)
+    // d("DisableWriteEvents " << epfd_)
     epoll_event ev{};
     ev.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
     ev.data.fd = fd;

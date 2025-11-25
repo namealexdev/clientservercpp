@@ -171,7 +171,9 @@ double SimpleServer::GetBitrate(){
         d(" " << ++i << " " << c->GetIP() << " " << c->GetFormattedBitrates());
         bps += c->GetRecvBitrate();
     }
-    d("full recv: " << Stats::FormatBitrate(bps) << " count:" << i);
+    d("full s recv: " << Stats::FormatBitrate(bps)
+                    << " (" << Stats::FormatBitrate(bps*8, true) << ")"
+                    << " count:" << i);
     return bps;
 }
 
@@ -390,8 +392,10 @@ double MultithreadServer::GetBitrate(){
     // int i = 1;
     // for (auto& c: worker_client_counts_)
     //     count_clis += std::to_string(i++) + ":" + std::to_string(c) + " ";
-    d("full recv: " << Stats::FormatBitrate(bps) << " " << count_clis << " count:" << count << "" )
-        return bps;
+    d("full m recv: " << Stats::FormatBitrate(bps)
+                      << " (" << Stats::FormatBitrate(bps*8, true) << ") "
+                      << count_clis << " count:" << count << "" );
+    return bps;
 }
 
 std::vector<std::unique_ptr<IServer> > *MultithreadServer::GetWorkers(){

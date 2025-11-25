@@ -96,7 +96,7 @@ SimpleClient::SimpleClient(ClientConfig config):
     });
 
     epoll_.SetOnReadyWriteHandler([&](int fd){
-        d("onwrite " << fd);
+        // d("onwrite " << fd);
 
         if (async_queue_send_){
             state_ = ClientState::SENDING;
@@ -359,20 +359,20 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
             // d("loop start");
 
             if (socket_ <= 0 || !IsConnected()) {
-                d("ftx WAIT: no socket ");
+                // d("ftx WAIT: no socket ");
                 futex_wait_queue();
                 // epoll_.EnableWriteEvents(socket_);
                 continue;
             }
 
             if (is_queue_empty()) {
-                d("ftx WAIT: empty queue");
+                // d("ftx WAIT: empty queue");
                 futex_wait_queue();
                 // epoll_.EnableWriteEvents(socket_);
                 continue;
             }
 
-            d("SENDING...");
+            // d("SENDING...");
             if (!QueueSendAll()){
                 futex_wait_queue();
             }
