@@ -2,6 +2,8 @@
 #define HANDSHAKE_H
 
 #include "const.h"
+#include "libinclude/iclient.h"
+#include "libinclude/iserver.h"
 #include <array>
 
 #pragma pack(push,1)
@@ -30,6 +32,43 @@ class HandshakeWrapper {
 public:
     HandshakeResult status_ = HandshakeResult::IN_PROGRESS;
 
+    // blocked methods
+    bool ClientHandshake(IClient* cli, int timeout_ms)
+    {
+        if (!cli || !cli->IsConnected()) return false;
+        int cli_fd = 0;
+
+        ClientHiMsg msg;
+        msg.uuid = generateUuid();
+        if (!sendStruct(cli_fd, msg, timeout_ms)) return false;
+
+        ServerAnsHiMsg ans;
+        if (!recvStruct(cli_fd, ans, timeout_ms)) return false;
+        if (ans.client_uuid != msg.uuid || ans.client_mode != SEND){
+            // error uuid or mode
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ServerHandshake(IServer* srv, int timeout_ms)
+    {
+        if (!srv || !srv->IsRunning()) return false;
+        int srv_fd = 0;
+
+        ClientHiMsg msg{0};
+        if (!recvStruct(srv_fd, msg, timeout_ms)) return false;
+
+        ServerAnsHiMsg ans;
+        ans.client_uuid = msg.uuid;
+        ans.client_mode = ClientMode::SEND;
+        if (!sendStruct(srv_fd, ans, timeout_ms)) return false;
+
+        return true;
+    }
+
+private:
     template<typename T>
     static bool sendStruct(int fd, const T& obj, int timeout_ms)
     {
@@ -93,7 +132,7 @@ public:
         return true;
     }
 
-private:
+
     static bool sendAll(int fd, const void* data, size_t size)
     {
         const uint8_t* p = (const uint8_t*)data;

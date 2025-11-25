@@ -24,6 +24,10 @@ class IServer{
 public:
     IServer(ServerConfig&& c) : conf_(std::move(c)) {};
     virtual ~IServer() = default;
+    bool IsRunning(){
+        return state_ != ServerState::STOPPED;
+    }
+
     virtual bool StartListen() = 0; // wait accept
     virtual void Stop() = 0;
     virtual int CountClients() = 0;
