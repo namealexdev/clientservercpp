@@ -158,6 +158,8 @@ void SimpleClient::reconnect()
         // !is_queue_empty()
         if (async_queue_send_) {
             futex_wake_queue();
+            if (!is_queue_empty())
+                epoll_.EnableWriteEvents(socket_);
         }else{
             epoll_.EnableWriteEvents(socket_);
         }
@@ -418,6 +420,8 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
 
             // d("SENDING...");
             if (!QueueSendAll()){
+                // не удалось отправить — явно включаем EPOLLOUT!
+                epoll_.EnableWriteEvents(socket_);
                 futex_wait_queue();
             }
         }
