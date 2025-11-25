@@ -40,8 +40,8 @@ public:
     void AddHandlerEvent(EventType type, std::function<void(void*)> handler) override;
 
 private:
-
     void handleData();
+    void onSocketClosed(int fd);
     void reconnect();
 
     int socket_ = -1;

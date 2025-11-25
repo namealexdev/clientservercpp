@@ -17,10 +17,19 @@ struct ServerAnsHiMsg {
     ClientMode client_mode;
 };
 #pragma pack(pop)
-#pragma once
+
+// Результат handshake
+enum class HandshakeResult {
+    IN_PROGRESS,  // Ещё не завершён
+    SUCCESS,      // Успешно
+    FAILED,       // Ошибка
+    TIMEOUT       // Превышено время ожидания
+};
 
 class HandshakeWrapper {
 public:
+    HandshakeResult status_ = HandshakeResult::IN_PROGRESS;
+
     template<typename T>
     static bool sendStruct(int fd, const T& obj, int timeout_ms)
     {

@@ -167,6 +167,13 @@ bool SimpleClientEventfd::reconnect()
             epoll_ctl(epfd_, EPOLL_CTL_ADD, socket_, &ev);
 
             state_ = ClientState::WAITING;
+
+            // После реконнекта: обрабатываем очереди
+            if (!queue_.empty()) {
+                uint64_t v = 1;
+                write(event_fd_, &v, sizeof(v));
+            }
+
             return true;
         }
 
@@ -176,6 +183,7 @@ bool SimpleClientEventfd::reconnect()
             return false;
         }
 
+        // 50, 100, 200, 400, 800, 1000
         int backoff_ms = std::min(1000, 50 * (1 << std::min(attempt, 6)));
         std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
     }

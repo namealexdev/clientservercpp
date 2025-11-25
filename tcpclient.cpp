@@ -86,7 +86,7 @@ void client_app(){
 
 void client_stress(){
     // SinglethreadFactory MultithreadFactory
-    auto fac = std::make_unique<SinglethreadFactory>();
+    auto fac = std::make_unique<MultithreadFactory>();
     ClientConfig cli_conf{
         .server_ip = "127.0.0.1",
         .server_port = 12345,

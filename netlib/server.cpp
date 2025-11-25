@@ -183,6 +183,7 @@ std::vector<std::unique_ptr<IServer> > *SimpleServer::GetWorkers(){
 
 std::vector<Stats *> SimpleServer::GetClientsStats(){
     std::vector<Stats*> vec;
+    vec.reserve(clients_.size());
     for (auto& c: clients_){
         vec.emplace_back(&c.second->stats);
     }
@@ -331,7 +332,8 @@ bool MultithreadServer::StartListen(){
         d("create worker " << i)
         auto worker = std::make_unique<SimpleServer>(conf_, dispatcher_);
         worker->AddHandlerEvent(EventType::ClientDisconnected, [this, i](void*) {
-            worker_client_counts_[i]--;
+            if(worker_client_counts_[i] > 0)
+                worker_client_counts_[i]--;
         });
         worker->StartWait();
         workers_.push_back(std::move(worker));
@@ -403,6 +405,7 @@ std::vector<std::unique_ptr<IServer> > *MultithreadServer::GetWorkers(){
 }
 
 std::vector<Stats *> MultithreadServer::GetClientsStats(){
+    assert(false);
     return {};
 }
 

@@ -84,15 +84,7 @@ SimpleClient::SimpleClient(ClientConfig config):
 
     epoll_.SetOnDisconnectHandler([&](int fd){
         // d("disconnect handle " << fd)
-        if (fd == socket_ && conf_.auto_reconnect){
-            epoll_.RemoveFd(fd);
-            reconnect();
-        }else{
-            Stop();
-        }
-        if (dispatcher_) {
-            dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
-        }
+        onSocketClosed(fd);
     });
 
     epoll_.SetOnReadyWriteHandler([&](int fd){
@@ -153,7 +145,22 @@ void SimpleClient::reconnect()
         }
         socket_ = sock;
         epoll_.AddFd(sock);
-        state_ = ClientState::WAITING;
+        state_ = ClientState::SENDING;
+
+        // После реконнекта: обрабатываем очереди
+        d("after reconnect: " << async_queue_send_ << " ")
+        if (async_queue_send_) {
+            futex_wake_queue();
+        }else{
+            epoll_.EnableWriteEvents(socket_);
+        }
+        // if (!async_queue_send_ && !is_queue_empty()) {
+        //     epoll_.EnableWriteEvents(socket_);
+        // }
+        // if (async_queue_send_ && !is_queue_empty()) {
+        //     futex_wake_queue();
+        // }
+
         break;
     }
 }
@@ -261,6 +268,20 @@ bool SimpleClient::QueueAdd(char *data, int size){
     return true;
 }
 
+void SimpleClient::onSocketClosed(int fd)
+{
+    // d("disconnect handle " << fd)
+    if (fd == socket_ && conf_.auto_reconnect){
+        epoll_.RemoveFd(fd);
+        reconnect();
+    }else{
+        Stop();
+    }
+    if (dispatcher_) {
+        dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
+    }
+}
+
 bool SimpleClient::QueueSendAll(){
     // так как у нас lockfree, то батчинга нету и делаем это последовательно 1 пакет = 1 sendmsg
     while (!is_queue_empty()) {
@@ -273,6 +294,8 @@ bool SimpleClient::QueueSendAll(){
             // d("send to socket " << sent)
             if (sent == -1) {
                 state_ = ClientState::ERROR;
+                last_error_ = strerror(errno);
+                onSocketClosed(socket_);
                 return false; // ошибка
             } else if (sent > 0) {
                 cur.sent_bytes += sent;
