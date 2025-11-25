@@ -133,7 +133,7 @@ void SimpleClient::Start()
 // блокирует пока не приконектиться. вызывается из потока BaseEpoll.
 void SimpleClient::reconnect()
 {
-    // d("client reconnected")
+    d("client reconnected")
     state_ = ClientState::CONNECTING;
     while(state_ != ClientState::DISCONNECTED){
         auto sock = create_socket_connect();
@@ -143,6 +143,8 @@ void SimpleClient::reconnect()
                 return;
             }
             // продолжаем попытки
+            d("fail - next try reconnect");
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             continue;
         }
 
@@ -276,21 +278,25 @@ void SimpleClient::onSocketClosed(int fd)
 {
     if (fd == socket_) {
         if (conf_.auto_reconnect){
-            d("reconnect")
+            d("onSocketClosed reconnect")
+            shutdown(socket_, SHUT_RDWR);
             epoll_.RemoveFd(fd);
+            socket_ = -1;
             reconnect();
         }else{
-            d("stop")
+            d("onSocketClosed stop")
             Stop();
         }
+
+        if (dispatcher_) {
+            dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
+        }
     }else{
-        throw std::runtime_error("onSocketClosed " + std::to_string(fd));
+        // throw std::runtime_error("onSocketClosed " + std::to_string(fd));
+        d("onSocketClosed FAIL RECONNECT - just remove socket " << fd);
         epoll_.RemoveFd(fd);
     }
 
-    if (dispatcher_) {
-        dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
-    }
 }
 
 bool SimpleClient::QueueSendAll(){

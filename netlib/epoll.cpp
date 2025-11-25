@@ -107,7 +107,7 @@ void BaseEpoll::ExecLoop()
 
             // d(" " << fd << " " << std::hex << ev << std::dec)
 
-            if (ev & (EPOLLHUP | EPOLLRDHUP)) {
+            if (ev & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
                 if (ev & EPOLLERR) {
                     int error = 0;
                     socklen_t len = sizeof(error);
@@ -116,6 +116,7 @@ void BaseEpoll::ExecLoop()
                         d("Socket error on fd " << fd << ": " << strerror(error));
                     }
                 }
+                RemoveFd(fd);
                 if (on_hangup_) on_hangup_(fd);
                 continue;
             } else {  // Только если НЕ было HUP/RDHUP
