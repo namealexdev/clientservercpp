@@ -83,7 +83,7 @@ SimpleClient::SimpleClient(ClientConfig config):
     });
 
     epoll_.SetOnDisconnectHandler([&](int fd){
-        // d("disconnect handle " << fd)
+        d("disconnect handle " << fd)
         onSocketClosed(fd);
     });
 
@@ -139,16 +139,21 @@ void SimpleClient::reconnect()
         auto sock = create_socket_connect();
         if (sock < 0){
             if (!conf_.auto_reconnect){
-                break;
+                state_ = ClientState::ERROR;
+                return;
             }
+            // продолжаем попытки
             continue;
         }
+
+        // подключились
         socket_ = sock;
         epoll_.AddFd(sock);
-        state_ = ClientState::SENDING;
+        state_ = ClientState::WAITING;
 
-        // После реконнекта: обрабатываем очереди
-        d("after reconnect: " << async_queue_send_ << " ")
+        d("reconnect success, queue empty: " << is_queue_empty() << " async q:" << async_queue_send_);
+
+        // !is_queue_empty()
         if (async_queue_send_) {
             futex_wake_queue();
         }else{
@@ -156,12 +161,11 @@ void SimpleClient::reconnect()
         }
         // if (!async_queue_send_ && !is_queue_empty()) {
         //     epoll_.EnableWriteEvents(socket_);
-        // }
-        // if (async_queue_send_ && !is_queue_empty()) {
+        // }else if (!is_queue_empty()) {
         //     futex_wake_queue();
         // }
 
-        break;
+        return;
     }
 }
 
@@ -270,13 +274,20 @@ bool SimpleClient::QueueAdd(char *data, int size){
 
 void SimpleClient::onSocketClosed(int fd)
 {
-    // d("disconnect handle " << fd)
-    if (fd == socket_ && conf_.auto_reconnect){
-        epoll_.RemoveFd(fd);
-        reconnect();
+    if (fd == socket_) {
+        if (conf_.auto_reconnect){
+            d("reconnect")
+            epoll_.RemoveFd(fd);
+            reconnect();
+        }else{
+            d("stop")
+            Stop();
+        }
     }else{
-        Stop();
+        throw std::runtime_error("onSocketClosed " + std::to_string(fd));
+        epoll_.RemoveFd(fd);
     }
+
     if (dispatcher_) {
         dispatcher_->onEvent(EventType::ClientDisconnected, &fd);
     }
@@ -295,8 +306,12 @@ bool SimpleClient::QueueSendAll(){
             if (sent == -1) {
                 state_ = ClientState::ERROR;
                 last_error_ = strerror(errno);
-                onSocketClosed(socket_);
-                return false; // ошибка
+                // Соединение разорвано
+                if (errno == EPIPE || errno == ECONNRESET) {
+                    onSocketClosed(socket_);
+                    return false;
+                }
+                return false; // Другие ошибки
             } else if (sent > 0) {
                 cur.sent_bytes += sent;
             } else {
@@ -377,8 +392,8 @@ void SimpleClient::SwitchAsyncQueue(bool enable)
     }
 
     queue_th_ = new std::thread([this](){
-        d("queue_th_ start " << async_queue_send_ << " " << (int)state_ << " " << (async_queue_send_ && state_ != ClientState::DISCONNECTED))
-        while (async_queue_send_ && state_ != ClientState::DISCONNECTED) {
+        d("queue_th_ start " << async_queue_send_ << " " << (int)state_ )
+        while (async_queue_send_) {
             // d("loop start");
 
             if (socket_ <= 0 || !IsConnected()) {
@@ -455,17 +470,17 @@ void SimpleClient::handleData() {
         }
         if (n == 0) {
             // Удаленный хост закрыл соединение
-            Stop();
+            onSocketClosed(socket_);
             break;
         }
 
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            break;
+            break;// Нет данных
         }
 
         last_error_ = strerror(errno);
         state_ = ClientState::ERROR;
-        Stop();
+        onSocketClosed(socket_);
         return;
     }
 }

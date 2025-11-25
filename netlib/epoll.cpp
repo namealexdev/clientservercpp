@@ -135,7 +135,7 @@ void BaseEpoll::ExecLoop()
 
         }
     }
-    d("STOP ExecLoop")
+    d("STOP ExecLoop " << need_stop_)
 }
 
 
